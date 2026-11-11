@@ -8,7 +8,7 @@ const TOMBSTONE_TTL_MS      = 90 * 24 * 60 * 60 * 1000; /* 90 days */
 
 /* Collections carrying soft-delete tombstones in a sibling `<key>Deleted` array.
    Must stay in step with TOMBSTONED in lib/engine.js. */
-const TOMBSTONED = ['entries', 'weights', 'foods', 'exercise'];
+const TOMBSTONED = ['entries', 'weights', 'foods', 'exercise', 'recipes'];
 
 const stampOf   = (it) => Number(it?.updated ?? it?.created ?? 0) || 0;
 const tombStamp = (t)  => Number(t?.deletedAt ?? 0) || 0;

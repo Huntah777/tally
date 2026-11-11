@@ -109,7 +109,40 @@ button{-webkit-user-select:none;user-select:none}
   box-shadow:var(--shadow-glass),inset 0 1px 0 var(--glass-shine),inset 0 0 0 .5px var(--glass-edge)}
 
 /* layout */
-.shell{display:flex;height:100%;overflow:hidden}
+.shell{display:flex;height:100%;height:100dvh;overflow:hidden}
+#app{min-height:100dvh}
+
+/* Calorie ring: sized by the screen rather than fixed, so a Pro Max gets a
+   bigger ring instead of a gap beside it. */
+.ring-wrap{position:relative;flex-shrink:0;width:clamp(150px,42vw,196px);aspect-ratio:1}
+.ring-wrap svg{width:100%;height:100%;display:block}
+.ring-num{font-size:clamp(30px,8.4vw,40px);font-weight:700;letter-spacing:-.03em}
+.ring-stat{font-size:clamp(20px,5.4vw,26px);font-weight:700}
+
+/* Large sheets (Add food, receipts, import, recipes) take the full height
+   like an iOS "large" sheet, so they use the whole screen and don't jump
+   about as results load. */
+@media (max-width:768px){
+  .sheet.tall{height:calc(100dvh - env(safe-area-inset-top,0px) - 16px)}
+}
+
+/* Plus / Pro Max (≥414pt wide): a touch more room and slightly larger
+   controls, so the bigger screen is used rather than left as margin. */
+@media (min-width:414px) and (max-width:768px){
+  .page{padding-left:18px;padding-right:18px}
+  h1{font-size:38px}
+  .pad{padding:18px}
+  .actions{gap:12px}
+  .action{padding:18px 4px 16px;font-size:14px}
+  .action .ico{width:50px;height:50px}
+  .action svg{width:24px;height:24px}
+  .tabbar,.tab-fab{height:66px}
+  .tab-fab{width:66px}
+  .tabbar{right:94px}
+  .tabbar button{font-size:11.5px}
+  .tile .v{font-size:27px}
+  .list-row{padding:13px 0}
+}
 .sidebar{width:240px;min-width:240px;background:var(--bg-sidebar);display:flex;flex-direction:column;padding:20px 12px;gap:2px}
 .main{flex:1;min-width:0;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
 .page{max-width:720px;margin:0 auto;padding:30px 24px 120px}
@@ -518,7 +551,7 @@ const ThemePref = {
 };
 
 /* ── shared UI ── */
-function Sheet({ title, onClose, children, footer, wide }) {
+function Sheet({ title, onClose, children, footer, wide, tall }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -527,7 +560,7 @@ function Sheet({ title, onClose, children, footer, wide }) {
   }, [onClose]);
   return ReactDOM.createPortal(
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 680 } : null}>
+      <div className={'sheet' + (tall ? ' tall' : '')} role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 680 } : null}>
         <div className="grabber" aria-hidden="true"/>
         <div className="sheet-head"><span className="spacer"/><h2>{title}</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>{Ic.x}</button></div>
         <div className="sheet-body">{children}</div>
@@ -621,20 +654,20 @@ function Ring({ eaten, target, bonus }) {
   const left = target - eaten;
   return (
     <div className="row gap20" style={{alignItems:'center'}}>
-      <div style={{position:'relative',width:156,height:156,flexShrink:0}}>
-        <svg viewBox="0 0 156 156" width="156" height="156" aria-hidden="true">
+      <div className="ring-wrap">
+        <svg viewBox="0 0 156 156" aria-hidden="true">
           <circle cx="78" cy="78" r={R} fill="none" stroke="var(--fill-active)" strokeWidth="12"/>
           <circle cx="78" cy="78" r={R} fill="none" stroke={over ? 'var(--warning)' : 'var(--accent)'} strokeWidth="12" strokeLinecap="round"
             strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 78 78)" style={{transition:'stroke-dashoffset 500ms var(--ease)'}}/>
         </svg>
         <div className="stack" style={{position:'absolute',inset:0,alignItems:'center',justifyContent:'center'}}>
-          <div className="num" style={{fontSize:30,fontWeight:700,letterSpacing:'-.03em',color: over ? 'var(--warning)' : 'var(--text-primary)'}}>{fmtK(Math.abs(left))}</div>
+          <div className="num ring-num" style={{color: over ? 'var(--warning)' : 'var(--text-primary)'}}>{fmtK(Math.abs(left))}</div>
           <div className="muted" style={{fontSize:12,fontWeight:700}}>{over ? 'kcal over' : 'kcal left'}</div>
         </div>
       </div>
       <div className="stack gap12 grow">
-        <div><div className="label">Eaten</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(eaten)}</div></div>
-        <div><div className="label">Target</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(target)}</div>
+        <div><div className="label">Eaten</div><div className="num ring-stat">{fmtK(eaten)}</div></div>
+        <div><div className="label">Target</div><div className="num ring-stat">{fmtK(target)}</div>
           {bonus > 0 && <div className="num" style={{fontSize:13,color:'var(--accent)',fontWeight:600}}>incl. +{fmtK(bonus)} exercise</div>}</div>
       </div>
     </div>);
@@ -1335,7 +1368,7 @@ function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab
 
   const title = picked ? 'How much?' : `Add to ${MEAL_LABEL[meal]}`;
   return (
-    <Sheet title={title} onClose={() => onClose()} wide={tab === 'receipt'}>
+    <Sheet title={title} onClose={() => onClose()} wide={tab === 'receipt'} tall>
       {picked
         ? <div className="stack gap12">
             <PortionPicker food={picked} meal={meal} setMeal={setMeal} onAdd={(g, m) => add(picked, g, m)}/>
@@ -1750,7 +1783,7 @@ function ImportSheet({ state, actions, onClose }) {
     return ds.length ? `${shortDate(ds[0])} ${ds[0].slice(0,4)} – ${shortDate(ds[ds.length-1])} ${ds[ds.length-1].slice(0,4)}` : '';
   };
   return (
-    <Sheet title="Import from other apps" onClose={() => onClose()} wide
+    <Sheet title="Import from other apps" onClose={() => onClose()} wide tall
       footer={sources && <><button className="btn" onClick={() => setSources(null)}>Start over</button>
         <button className="btn primary grow" disabled={!plan.entries.length && !plan.weights.length} onClick={() => { actions.importData(plan); onClose(`Imported ${plan.entries.length.toLocaleString()} food entries and ${plan.weights.length.toLocaleString()} weigh-ins`); }}>
           Import {plan.entries.length.toLocaleString()} entries · {plan.weights.length.toLocaleString()} weigh-ins</button></>}>
