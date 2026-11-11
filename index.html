@@ -440,8 +440,12 @@ function Seg({ value, options, onChange }) {
     <button key={v} role="tab" aria-selected={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>{l}</button>)}</div>;
 }
 
-function Field({ label, children, hint }) {
-  return <label className="field"><span>{label}</span>{children}{hint && <small className="muted" style={{fontSize:12}}>{hint}</small>}</label>;
+/* A <label> wraps a single input. Fields holding several controls (a unit
+   toggle plus boxes) use `group`: inside a <label>, tapping the caption
+   would "click" the first button — flipping the unit by accident. */
+function Field({ label, children, hint, group }) {
+  const Tag = group ? 'div' : 'label';
+  return <Tag className="field" {...(group ? { role: 'group', 'aria-label': label } : {})}><span>{label}</span>{children}{hint && <small className="muted" style={{fontSize:12}}>{hint}</small>}</Tag>;
 }
 
 /* Weight input in the user's units. Stone users type stones + pounds. */
@@ -461,22 +465,39 @@ function WeightInput({ kg, units, onChange, autoFocus, id }) {
   };
   if (units === 'st') return (
     <div className="row gap8">
-      <div className="row gap6 grow"><input id={id} className="input num" inputMode="numeric" placeholder="st" value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value, p.b)}/><span className="muted">st</span></div>
-      <div className="row gap6 grow"><input className="input num" inputMode="decimal" placeholder="lb" value={p.b} onChange={e => emit(p.a, e.target.value)}/><span className="muted">lb</span></div>
+      <div className="row gap6 grow"><input id={id} className="input num" inputMode="numeric" placeholder="st" aria-label="Stones" value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value, p.b)}/><span className="muted">st</span></div>
+      <div className="row gap6 grow"><input className="input num" inputMode="decimal" placeholder="lb" aria-label="Pounds" value={p.b} onChange={e => emit(p.a, e.target.value)}/><span className="muted">lb</span></div>
     </div>);
-  return <div className="row gap8"><input id={id} className="input num" inputMode="decimal" placeholder="0.0" value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value)}/><span className="muted">{units}</span></div>;
+  return <div className="row gap8"><input id={id} className="input num" inputMode="decimal" placeholder="0.0" aria-label={`Weight in ${units}`} value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value)}/><span className="muted">{units}</span></div>;
 }
 
-function HeightInput({ cm, units, onChange }) {
-  const imperial = units !== 'kg';
-  const [ft, setFt] = useState(() => cm ? String(Math.floor(cm / 30.48)) : '');
-  const [inch, setIn] = useState(() => cm ? String(Math.round((cm / 2.54) % 12)) : '');
-  if (!imperial) return <div className="row gap8"><input className="input num" inputMode="numeric" placeholder="170" value={cm ?? ''} onChange={e => onChange(parseFloat(e.target.value) || null)}/><span className="muted">cm</span></div>;
-  const emit = (f, i) => { setFt(f); setIn(i); const F = parseFloat(f) || 0, I = parseFloat(i) || 0; onChange(F || I ? Math.round((F * 12 + I) * 2.54) : null); };
+/* Height in cm or feet & inches, independent of the weight unit — plenty of
+   people weigh in kg but think of their height in feet. Stored as cm.
+   Inches are rounded on the total first, so 182.6 cm is 6 ft 0 in, never
+   "5 ft 12 in". */
+const heightUnitFor = (p) => p?.heightUnit || ((p?.units || 'kg') === 'kg' ? 'cm' : 'ft');
+const cmToFtIn = (cm) => { const total = Math.round(cm / 2.54); return { ft: Math.floor(total / 12), inch: total % 12 }; };
+
+function HeightInput({ cm, unit, onChange, onUnitChange }) {
+  const toParts = () => (cm ? cmToFtIn(cm) : null);
+  const [ft, setFt] = useState(() => toParts() ? String(toParts().ft) : '');
+  const [inch, setIn] = useState(() => toParts() ? String(toParts().inch) : '');
+  /* Re-derive the boxes when switching unit, so 175 cm shows as 5 ft 9 in. */
+  useEffect(() => { const p = toParts(); setFt(p ? String(p.ft) : ''); setIn(p ? String(p.inch) : ''); }, [unit]);
+  const emit = (f, i) => {
+    setFt(f); setIn(i);
+    const F = parseFloat(f) || 0, I = parseFloat(i) || 0;
+    onChange(F || I ? Math.round((F * 12 + I) * 2.54 * 10) / 10 : null);
+  };
   return (
-    <div className="row gap8">
-      <div className="row gap6 grow"><input className="input num" inputMode="numeric" placeholder="5" value={ft} onChange={e => emit(e.target.value, inch)}/><span className="muted">ft</span></div>
-      <div className="row gap6 grow"><input className="input num" inputMode="numeric" placeholder="9" value={inch} onChange={e => emit(ft, e.target.value)}/><span className="muted">in</span></div>
+    <div className="stack gap8">
+      {onUnitChange && <Seg value={unit} onChange={onUnitChange} options={[['cm','cm'],['ft','ft & in']]}/>}
+      {unit === 'cm'
+        ? <div className="row gap8"><input className="input num" inputMode="numeric" placeholder="170" aria-label="Height in centimetres" value={cm ? String(Math.round(cm)) : ''} onChange={e => onChange(parseInt(e.target.value.replace(/D/g, ''), 10) || null)}/><span className="muted">cm</span></div>
+        : <div className="row gap8">
+            <div className="row gap6 grow"><input className="input num" inputMode="numeric" placeholder="5" aria-label="Feet" value={ft} onChange={e => emit(e.target.value.replace(/D/g, ''), inch)}/><span className="muted">ft</span></div>
+            <div className="row gap6 grow"><input className="input num" inputMode="decimal" placeholder="9" aria-label="Inches" value={inch} onChange={e => emit(ft, e.target.value)}/><span className="muted">in</span></div>
+          </div>}
     </div>);
 }
 
@@ -742,14 +763,14 @@ function Onboarding({ state, onDone }) {
   const range = E.healthyRangeKg(p.heightCm);
   const steps = [
     { title: 'About you', ok: p.heightCm > 100 && Number(p.birthYear) > 1900 && Number(p.birthYear) < new Date().getFullYear() - 12, body: <>
-      <Field label="Units"><Seg value={p.units} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
-      <Field label="Sex" hint="Used in the calorie formula. Pick whichever is closest to your physiology."><Seg value={p.sex} onChange={v => set('sex', v)} options={[['female','Female'],['male','Male'],['other','Other']]}/></Field>
+      <Field label="Units" group><Seg value={p.units} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
+      <Field label="Sex" hint="Used in the calorie formula. Pick whichever is closest to your physiology." group><Seg value={p.sex} onChange={v => set('sex', v)} options={[['female','Female'],['male','Male'],['other','Other']]}/></Field>
       <Field label="Year of birth"><input className="input num" inputMode="numeric" placeholder="1990" value={p.birthYear || ''} onChange={e => set('birthYear', e.target.value.replace(/\D/g,'').slice(0,4))}/></Field>
-      <Field label="Height"><HeightInput cm={p.heightCm} units={p.units} onChange={v => set('heightCm', v)}/></Field>
+      <Field label="Height" group><HeightInput cm={p.heightCm} unit={heightUnitFor(p)} onChange={v => set('heightCm', v)} onUnitChange={u => set('heightUnit', u)}/></Field>
     </> },
     { title: 'Your weight', ok: p.startKg > 30 && p.goalKg > 30, body: <>
-      <Field label="Current weight"><WeightInput kg={p.startKg} units={p.units} onChange={v => set('startKg', v)}/></Field>
-      <Field label="Goal weight" hint={range ? `A healthy range for your height is about ${E.fmtWeight(range.min, p.units)} – ${E.fmtWeight(range.max, p.units)}.` : null}>
+      <Field label="Current weight" group><WeightInput kg={p.startKg} units={p.units} onChange={v => set('startKg', v)}/></Field>
+      <Field label="Goal weight" hint={range ? `A healthy range for your height is about ${E.fmtWeight(range.min, p.units)} – ${E.fmtWeight(range.max, p.units)}.` : null} group>
         <WeightInput kg={p.goalKg} units={p.units} onChange={v => set('goalKg', v)}/>
       </Field>
       {range && p.goalKg && p.goalKg < range.min && <div className="err">That goal is below a healthy weight for your height. Tally will warn you about this.</div>}
@@ -874,7 +895,7 @@ function PortionPicker({ food, initialGrams, meal, setMeal, onAdd, addLabel = 'A
           <span><b style={{color:'var(--protein)'}}>P</b> {m.protein}g</span><span><b style={{color:'var(--carbs)'}}>C</b> {m.carbs}g</span><span><b style={{color:'var(--fat)'}}>F</b> {m.fat}g</span>
         </div>
       </div>
-      {setMeal && <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>}
+      {setMeal && <Field label="Meal" group><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>}
       <button className="btn primary block" disabled={!g} onClick={() => onAdd(g, m)}>{addLabel} · {fmtK(m.kcal)} kcal</button>
     </div>);
 }
@@ -890,7 +911,7 @@ function CustomFoodForm({ barcode, initialName = '', onSave }) {
       <Field label="Name"><input className="input" value={f.name} onChange={set('name')} placeholder="e.g. Protein yoghurt"/></Field>
       <div className="row gap8">
         <Field label="Brand (optional)"><input className="input" value={f.brand} onChange={set('brand')}/></Field>
-        <Field label="Per"><Seg value={f.unit} onChange={v => setF(o => ({...o, unit: v}))} options={[['g','100g'],['ml','100ml']]}/></Field>
+        <Field label="Per" group><Seg value={f.unit} onChange={v => setF(o => ({...o, unit: v}))} options={[['g','100g'],['ml','100ml']]}/></Field>
       </div>
       <div className="row gap8">
         <Field label="kcal"><input className="input num" inputMode="decimal" value={f.kcal} onChange={set('kcal')}/></Field>
@@ -1146,7 +1167,7 @@ function ReceiptFlow({ state, actions, meal: initialMeal, date, onClose }) {
       </div>
       {!!items.length && <>
         {takeaway && <button className="btn sm" style={{alignSelf:'flex-start'}} onClick={() => setItems(xs => xs.map(x => ({ ...x, share: 0.5 })))}>Split everything in half</button>}
-        <Field label="Log to"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+        <Field label="Log to" group><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
         <div className="row gap10">
           {!takeaway && <button className="btn grow" onClick={() => commit(false)} disabled={!items.some(i => i.food)}>Save to My foods</button>}
           <button className="btn primary grow" onClick={() => commit(true)} disabled={!chosen.length}>Log {chosen.length || ''} · {fmtK(totalKcal)} kcal</button>
@@ -1245,7 +1266,7 @@ function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab
               <div className="row gap8">
                 {['protein','carbs','fat'].map(k => <Field key={k} label={k[0].toUpperCase() + k.slice(1) + ' g'}><input className="input num" inputMode="decimal" value={quick[k]} onChange={e => setQuick({...quick, [k]: e.target.value})} placeholder="optional"/></Field>)}
               </div>
-              <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+              <Field label="Meal" group><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
               <button className="btn primary" disabled={!(parseFloat(quick.kcal) > 0)} onClick={() => {
                 actions.addEntry({ date, meal, name: quick.name.trim() || 'Quick add', kcal: Math.round(parseFloat(quick.kcal)), protein: r1(parseFloat(quick.protein)), carbs: r1(parseFloat(quick.carbs)), fat: r1(parseFloat(quick.fat)), source: 'quick' });
                 onClose('Added');
@@ -1270,7 +1291,7 @@ function EntrySheet({ entry, state, actions, onClose }) {
             <div className="row gap8">
               {['kcal','protein','carbs','fat'].map(k => <Field key={k} label={k === 'kcal' ? 'kcal' : k[0].toUpperCase() + k.slice(1) + ' g'}><input className="input num" inputMode="decimal" value={vals[k] ?? ''} onChange={e => setVals({...vals, [k]: e.target.value})}/></Field>)}
             </div>
-            <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+            <Field label="Meal" group><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
             <button className="btn primary" onClick={() => { actions.updateEntry({ ...entry, meal, name: vals.name, kcal: Math.round(parseFloat(vals.kcal) || 0), protein: r1(parseFloat(vals.protein)), carbs: r1(parseFloat(vals.carbs)), fat: r1(parseFloat(vals.fat)) }); onClose('Saved'); }}>Save</button>
           </div>}
     </Sheet>);
@@ -1284,7 +1305,7 @@ function WeighInSheet({ state, actions, onClose }) {
   return (
     <Sheet title="Log weight" onClose={() => onClose()}>
       <div className="stack gap16">
-        <Field label="Weight"><WeightInput kg={kg} units={units} onChange={setKg} autoFocus/></Field>
+        <Field label="Weight" group><WeightInput kg={kg} units={units} onChange={setKg} autoFocus/></Field>
         <Field label="Date"><input className="input" type="date" value={date} max={E.today()} onChange={e => setDate(e.target.value)}/></Field>
         <p className="sub">For the cleanest trend, weigh in first thing in the morning after the toilet, before eating or drinking.</p>
         <button className="btn primary" disabled={!(kg > 25 && kg < 400)} onClick={() => { actions.logWeight(date, kg); onClose(existing ? 'Weight updated' : 'Weight logged'); }}>{existing ? 'Update' : 'Save'}</button>
@@ -1504,7 +1525,7 @@ function ImportSheet({ state, actions, onClose }) {
                 <div className="sub">{[s.entries?.length ? `${s.entries.length.toLocaleString()} food entries` : null, s.weights?.length ? `${s.weights.length.toLocaleString()} weigh-ins` : null].filter(Boolean).join(' · ') || 'Nothing recognised yet'}{range(s) ? ` · ${range(s)}` : ''}</div></div>
             </label>
             {(s.notes || []).map((n, k) => <div key={k} className="sub">{n}</div>)}
-            {(s.kind === 'mfp-measurement' || (s.kind === 'generic' && s.columns?.weight)) && <Field label="Weights in this file are in">
+            {(s.kind === 'mfp-measurement' || (s.kind === 'generic' && s.columns?.weight)) && <Field label="Weights in this file are in" group>
               <Seg value={s.weightUnit || 'kg'} onChange={u => reparse(i, { weightUnit: u })} options={[['kg','kg'],['lb','lb'],['st','stone']]}/></Field>}
             {s.weights?.length > 0 && <div className="sub">Latest: {E.fmtWeight(s.weights.reduce((a, b) => a.date > b.date ? a : b).kg, units)}. Check this looks right.</div>}
             {s.kind === 'generic' && s.headers && <details><summary className="sub" style={{cursor:'pointer'}}>Columns</summary>
@@ -1512,7 +1533,7 @@ function ImportSheet({ state, actions, onClose }) {
                 {['date','kcal','protein','carbs','fat','weight','meal','name'].map(k => <label key={k} className="field" style={{minWidth:130,flex:1}}><span>{k === 'kcal' ? 'Calories' : k[0].toUpperCase() + k.slice(1)}</span>
                   <select className="select" value={s.columns?.[k] || ''} onChange={e => reparse(i, { map: { ...s.columns, [k]: e.target.value || null } })}>
                     <option value="">—</option>{s.headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>)}
-                <Field label="Dates are"><Seg value={s.dateOrder || 'dmy'} onChange={d => reparse(i, { dateOrder: d })} options={[['dmy','day/month'],['mdy','month/day']]}/></Field>
+                <Field label="Dates are" group><Seg value={s.dateOrder || 'dmy'} onChange={d => reparse(i, { dateOrder: d })} options={[['dmy','day/month'],['mdy','month/day']]}/></Field>
               </div></details>}
           </div>))}
         <label className="row gap10" style={{cursor:'pointer'}}><input type="checkbox" className="check" checked={skipLogged} onChange={e => setSkipLogged(e.target.checked)}/>
@@ -1555,9 +1576,9 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
 
       <div className="card pad stack gap16">
         <h2>Goal & body</h2>
-        <Field label="Units"><Seg value={draft.units || 'kg'} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
+        <Field label="Units" group><Seg value={draft.units || 'kg'} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
         <div className="row gap10">
-          <Field label="Goal weight"><WeightInput kg={draft.goalKg} units={draft.units || 'kg'} onChange={v => set('goalKg', v)}/></Field>
+          <Field label="Goal weight" group><WeightInput kg={draft.goalKg} units={draft.units || 'kg'} onChange={v => set('goalKg', v)}/></Field>
         </div>
         <Field label="Pace"><select className="select" value={String(draft.paceKg ?? 0.5)} onChange={e => set('paceKg', Number(e.target.value))}>
           {E.PACES.map(pc => <option key={pc.id} value={String(pc.kg)}>{pc.label} · {E.fmtWeight(pc.kg, draft.units || 'kg')} a week</option>)}
@@ -1565,7 +1586,7 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         </select></Field>
         <Field label="Activity"><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label} — {a.hint}</option>)}</select></Field>
         <div className="row gap10">
-          <Field label="Height"><HeightInput cm={draft.heightCm} units={draft.units || 'kg'} onChange={v => set('heightCm', v)}/></Field>
+          <Field label="Height" group><HeightInput cm={draft.heightCm} unit={heightUnitFor(draft)} onChange={v => set('heightCm', v)} onUnitChange={u => set('heightUnit', u)}/></Field>
         </div>
         <div className="row gap10">
           <Field label="Year of birth"><input className="input num" inputMode="numeric" value={draft.birthYear || ''} onChange={e => set('birthYear', Number(e.target.value.replace(/\D/g,'').slice(0,4)) || '')}/></Field>

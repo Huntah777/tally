@@ -74,3 +74,23 @@ test('passkey: register, sign out, sign back in with it', async ({ page, browser
   await page.goto('/?view=me');
   await expect(page.getByText(email)).toBeVisible();
 });
+
+test('height can be entered in feet and inches, whatever the weight unit', async ({ page }) => {
+  await signUp(page);
+  await page.getByLabel('Year of birth').fill('1990');
+  await page.getByRole('tab', { name: 'ft & in' }).click();
+  await page.getByLabel('Feet').fill('5');
+  await page.getByLabel('Inches').fill('9');
+  /* switching back shows the same height in cm, and the weight unit is untouched */
+  await page.getByRole('tab', { name: 'cm', exact: true }).click();
+  await expect(page.getByLabel('Height in centimetres')).toHaveValue('175');
+  await expect(page.getByRole('tab', { name: 'kg', exact: true })).toHaveAttribute('aria-selected', 'true');
+  /* 6 ft exactly round-trips without becoming "5 ft 12 in" */
+  await page.getByLabel('Height in centimetres').fill('183');
+  await page.getByRole('tab', { name: 'ft & in' }).click();
+  await expect(page.getByLabel('Feet')).toHaveValue('6');
+  await expect(page.getByLabel('Inches')).toHaveValue('0');
+  /* tapping the caption doesn't flip the unit */
+  await page.getByText('Height', { exact: true }).click();
+  await expect(page.getByLabel('Feet')).toBeVisible();
+});
