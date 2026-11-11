@@ -103,12 +103,12 @@ data**. Ask them for a backup first (*Me → Download backup*).
 
 A web app can't read HealthKit, so an iOS Shortcut does it. It runs as a
 daily personal automation and posts the day's active energy, steps, weight
-and body fat to  using a per-user **sync key** (made in
-*Me → Apple Health*, stored hashed in the  table, shown once).
+and body fat to `/api/ingest` using a per-user **sync key** (made in
+*Me → Apple Health*, stored hashed in the `api_tokens` table, shown once).
 A key can only send Health numbers; it can't read data or sign in. The
 step-by-step setup is in the app, in the same card.
 
-How the numbers are used ( in ):
+How the numbers are used (`exerciseForDay` in `lib/engine.js`):
 
 - Active energy counts only above what the chosen day-to-day activity level
   already assumes. A watch also counts walking around the house.
@@ -118,7 +118,7 @@ How the numbers are used ( in ):
 - Half of the credit is added to the day's target by default (*Me →
   Exercise*: Off / Half / All).
 
- is safe to re-run after pulling. It added  for this.
+`schema.sql` is safe to re-run after pulling. It added `api_tokens` for this.
 
 ## 4. Local development
 
