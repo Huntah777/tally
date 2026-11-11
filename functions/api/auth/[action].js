@@ -162,6 +162,7 @@ async function deleteAccount({ request, env }) {
     env.DB.prepare('DELETE FROM state    WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM passkeys WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM api_tokens WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM users    WHERE id = ?').bind(user.id),
   ]);
   return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(request) });

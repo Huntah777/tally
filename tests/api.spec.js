@@ -116,3 +116,55 @@ test('invite-only: health says so, and missing or wrong codes are refused', asyn
   /* case and surrounding spaces don't matter — people type these on phones */
   expect((await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'long-enough-pw', invite: '  ' + INVITE.toUpperCase() + ' ' } })).status()).toBe(201);
 });
+
+test.describe('Apple Health sync', () => {
+  async function withKey(baseURL) {
+    const u = await newUser(baseURL);
+    const r = await u.ctx.post('/api/tokens', { headers: H, data: {} });
+    expect(r.status()).toBe(201);
+    return { ...u, key: (await r.json()).token };
+  }
+  const ingest = (ctx, key, data) => ctx.post('/api/ingest', { headers: { Authorization: 'Bearer ' + key }, data });
+
+  test('accepts what Shortcuts sends, and re-running replaces the day', async ({ baseURL }) => {
+    const { ctx, key } = await withKey(baseURL);
+    const r = await ingest(ctx, key, { date: '2026-11-10', activeKcal: ['300.5 kcal', '212 kcal'], steps: '9,412', weight: '126.4 kg', bodyFat: '0.356' });
+    expect(r.status()).toBe(200);
+    expect((await r.json()).saved).toEqual({ activeKcal: 513, steps: 9412, weightKg: 126.4, bodyFatPct: 35.6 });
+    await ingest(ctx, key, { date: '2026-11-10', activeKcal: 640 });
+    const s = await (await ctx.get('/api/state', { headers: H })).json();
+    const day = s.exercise.filter((x) => x.date === '2026-11-10');
+    expect(day).toHaveLength(1);
+    expect(day[0]).toMatchObject({ kind: 'health', activeKcal: 640, steps: 9412 });
+    expect(s.weights.find((w) => w.date === '2026-11-10')).toMatchObject({ kg: 126.4, fatPct: 35.6, source: 'apple-health' });
+  });
+
+  test('pounds are converted, and a weigh-in typed into Tally beats the Health one', async ({ baseURL }) => {
+    const { ctx, key } = await withKey(baseURL);
+    await ctx.put('/api/state', { headers: H, data: { weights: [{ id: 'w:2026-11-09', date: '2026-11-09', kg: 120, source: 'manual', updated: 1 }] } });
+    await ingest(ctx, key, { date: '2026-11-09', weight: '280 lb', bodyFat: '35%' });
+    await ingest(ctx, key, { date: '2026-11-08', weight: '280 lb' });
+    const s = await (await ctx.get('/api/state', { headers: H })).json();
+    expect(s.weights.find((w) => w.date === '2026-11-09')).toMatchObject({ kg: 120, fatPct: 35 });
+    expect(s.weights.find((w) => w.date === '2026-11-08').kg).toBeCloseTo(127.0, 1);
+  });
+
+  test('bad keys, bad dates and empty bodies are refused; revoked keys stop working', async ({ baseURL }) => {
+    const { ctx, key } = await withKey(baseURL);
+    expect((await ingest(ctx, 'tly_nope', { steps: 1 })).status()).toBe(401);
+    expect((await ctx.post('/api/ingest', { data: { steps: 1 } })).status()).toBe(401);
+    expect((await ingest(ctx, key, { date: '11/10/2026', steps: 1 })).status()).toBe(400);
+    expect((await ingest(ctx, key, { steps: 'none' })).status()).toBe(400);
+    const list = await (await ctx.get('/api/tokens', { headers: H })).json();
+    expect(list.tokens[0].last_used).toBeNull();
+    await ctx.delete('/api/tokens?id=' + encodeURIComponent(list.tokens[0].id), { headers: H });
+    expect((await ingest(ctx, key, { steps: 1 })).status()).toBe(401);
+  });
+
+  test('a key only writes to its own account', async ({ baseURL }) => {
+    const a = await withKey(baseURL), b = await newUser(baseURL);
+    await ingest(a.ctx, a.key, { date: '2026-11-07', steps: 12345 });
+    const bs = await (await b.ctx.get('/api/state', { headers: H })).json();
+    expect(JSON.stringify(bs)).not.toContain('12345');
+  });
+});

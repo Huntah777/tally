@@ -303,6 +303,8 @@ const Ic = {
   download:svg(<><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></>),
   camera:  svg(<><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></>),
   image:   svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>),
+  run:     svg(<><circle cx="14" cy="4.5" r="2"/><path d="M6 21l3.5-6.5L13 17v4M8.5 11l3-3.5 3 3 3 1M11.5 7.5L9 14"/></>),
+  heart:   svg(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>),
   logout:  svg(<><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></>),
 };
 const LEVEL = {
@@ -405,7 +407,7 @@ const Cache = {
   user() { try { return JSON.parse(localStorage.getItem(LAST_USER) || 'null'); } catch { return null; } },
   setUser(u) { try { u ? localStorage.setItem(LAST_USER, JSON.stringify(u)) : localStorage.removeItem(LAST_USER); } catch {} },
 };
-const SEED = () => ({ profile: null, entries: [], entriesDeleted: [], weights: [], weightsDeleted: [], foods: [], foodsDeleted: [], aliases: {}, ui: {} });
+const SEED = () => ({ profile: null, entries: [], entriesDeleted: [], weights: [], weightsDeleted: [], foods: [], foodsDeleted: [], exercise: [], exerciseDeleted: [], aliases: {}, ui: {} });
 const hydrate = (s) => ({ ...SEED(), ...(s || {}) });
 
 const ThemePref = {
@@ -513,7 +515,7 @@ function MacroBar({ label, value, target, color }) {
 
 /* Remaining-calories ring. One headline number; eaten and target sit beside
    it as plain text so the ring is never the only carrier of the value. */
-function Ring({ eaten, target }) {
+function Ring({ eaten, target, bonus }) {
   const R = 64, C = 2 * Math.PI * R;
   const over = eaten > target;
   const frac = target ? Math.min(1, eaten / target) : 0;
@@ -533,7 +535,8 @@ function Ring({ eaten, target }) {
       </div>
       <div className="stack gap12 grow">
         <div><div className="label">Eaten</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(eaten)}</div></div>
-        <div><div className="label">Target</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(target)}</div></div>
+        <div><div className="label">Target</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(target)}</div>
+          {bonus > 0 && <div className="num" style={{fontSize:13,color:'var(--accent)',fontWeight:600}}>incl. +{fmtK(bonus)} exercise</div>}</div>
       </div>
     </div>);
 }
@@ -776,6 +779,7 @@ function Onboarding({ state, onDone }) {
       {range && p.goalKg && p.goalKg < range.min && <div className="err">That goal is below a healthy weight for your height. Tally will warn you about this.</div>}
     </> },
     { title: 'How active are you?', ok: true, body: <div className="stack gap8">
+      <p className="sub">Your normal day, not counting workouts. You’ll log those as exercise, or sync them from Apple Health.</p>
       {Object.entries(E.ACTIVITY).map(([k, a]) =>
         <button key={k} className={'card pad row between' } style={{textAlign:'left',cursor:'pointer',borderColor: p.activity === k ? 'var(--accent)' : undefined, background: p.activity === k ? 'var(--accent-soft)' : undefined}} onClick={() => set('activity', k)}>
           <div><div style={{fontWeight:700}}>{a.label}</div><div className="sub">{a.hint}</div></div>{p.activity === k && Ic.check}
@@ -1302,15 +1306,108 @@ function WeighInSheet({ state, actions, onClose }) {
   const [date, setDate] = useState(E.today());
   const existing = (state.weights || []).find(w => w.date === date);
   const [kg, setKg] = useState(existing?.kg ?? E.currentWeight(state));
+  const [fat, setFat] = useState(existing?.fatPct ? String(existing.fatPct) : '');
   return (
     <Sheet title="Log weight" onClose={() => onClose()}>
       <div className="stack gap16">
         <Field label="Weight" group><WeightInput kg={kg} units={units} onChange={setKg} autoFocus/></Field>
+        <Field label="Body fat % (optional)" hint="If your scale shows it. Lets Tally base your burn on body composition (Me → Goal & body).">
+          <input className="input num" inputMode="decimal" placeholder="e.g. 35.6" value={fat} onChange={e => setFat(e.target.value.replace(/[^\d.]/g, ''))}/></Field>
         <Field label="Date"><input className="input" type="date" value={date} max={E.today()} onChange={e => setDate(e.target.value)}/></Field>
         <p className="sub">For the cleanest trend, weigh in first thing in the morning after the toilet, before eating or drinking.</p>
-        <button className="btn primary" disabled={!(kg > 25 && kg < 400)} onClick={() => { actions.logWeight(date, kg); onClose(existing ? 'Weight updated' : 'Weight logged'); }}>{existing ? 'Update' : 'Save'}</button>
+        <button className="btn primary" disabled={!(kg > 25 && kg < 400)} onClick={() => { actions.logWeight(date, kg, parseFloat(fat) || null); onClose(existing ? 'Weight updated' : 'Weight logged'); }}>{existing ? 'Update' : 'Save'}</button>
       </div>
     </Sheet>);
+}
+
+/* Log or edit a workout. Calories are estimated from the activity and
+   minutes (net of resting burn) and can be overwritten with a watch's figure. */
+function ExerciseSheet({ state, actions, date, item, onClose }) {
+  const kg = E.currentWeight(state) || 80;
+  const [type, setType] = useState(item?.type || 'walk');
+  const [mins, setMins] = useState(String(item?.minutes || 30));
+  const [kcal, setKcal] = useState(item?.kcalEdited ? String(item.kcal) : '');
+  const auto = E.exerciseKcal(type, mins, kg);
+  const value = kcal !== '' ? Math.round(Number(kcal) || 0) : auto;
+  const healthDay = (state.exercise || []).some(x => x.kind === 'health' && x.date === date && !x.deleted);
+  const save = () => {
+    actions.saveExercise({ ...(item || {}), id: item?.id || uid(), date, kind: 'workout', type, name: E.EXERCISES[type].label,
+      minutes: Number(mins) || 0, kcal: value, kcalEdited: kcal !== '' });
+    onClose(item ? 'Workout updated' : 'Workout logged');
+  };
+  return (
+    <Sheet title={item ? 'Edit workout' : 'Log a workout'} onClose={() => onClose()}
+      footer={item && <button className="btn danger" onClick={() => { actions.removeExercise(item); onClose(); }}>{Ic.trash} Delete</button>}>
+      <div className="stack gap16">
+        <div className="row gap6 wrap">{Object.entries(E.EXERCISES).map(([k, x]) =>
+          <button key={k} className={'chip' + (type === k ? ' on' : '')} onClick={() => setType(k)}>{x.label}</button>)}</div>
+        <div className="row gap10">
+          <Field label="Minutes"><input className="input num" inputMode="numeric" value={mins} onChange={e => setMins(e.target.value.replace(/\D/g, ''))}/></Field>
+          <Field label="Calories burned" hint={kcal === '' ? 'Estimated. Type your watch’s number to use that instead.' : 'Using your number.'}>
+            <input className="input num" inputMode="numeric" placeholder={String(auto)} value={kcal} onChange={e => setKcal(e.target.value.replace(/\D/g, ''))}/></Field>
+        </div>
+        {healthDay && <p className="sub">Apple Health already sent today’s activity, which includes this workout, so it won’t be added twice.</p>}
+        <button className="btn primary" disabled={!(Number(mins) > 0)} onClick={save}>{item ? 'Save' : 'Log'} · {fmtK(value)} kcal</button>
+      </div>
+    </Sheet>);
+}
+
+/* Sync keys + setup guide for the Apple Health Shortcut. */
+function AppleHealthCard() {
+  const [tokens, setTokens] = useState(null);
+  const [fresh, setFresh] = useState(null);
+  const [err, setErr] = useState('');
+  const [copied, setCopied] = useState('');
+  const url = location.origin + '/api/ingest';
+  const load = () => api('/api/tokens').then(r => setTokens(r.tokens || [])).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, []);
+  const copy = (what, text) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1500); };
+  const create = async () => {
+    setErr('');
+    try { const r = await api('/api/tokens', { method: 'POST', body: { label: 'Apple Health Shortcut' } }); setFresh(r.token); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const revoke = async (id) => {
+    if (!confirm('Remove this sync key? A Shortcut using it will stop syncing.')) return;
+    await api('/api/tokens?id=' + encodeURIComponent(id), { method: 'DELETE' }); load();
+  };
+  const synced = (tokens || []).map(t => t.last_used).filter(Boolean).sort().pop();
+  return (
+    <div className="card pad stack gap12">
+      <div className="row gap10"><span style={{color:'var(--danger)',width:22,height:22}}>{Ic.heart}</span><h2>Apple Health</h2></div>
+      <p className="sub">Web apps can’t read Apple Health directly; only native iPhone apps can. Instead, a Shortcut on your iPhone sends Tally your active calories, steps, weight and body fat every evening. It takes about five minutes to set up, once.</p>
+      {synced && <div className="sub">Last sync: <b style={{color:'var(--text-primary)'}}>{new Date(synced).toLocaleString('en-GB', { weekday:'short', hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' })}</b></div>}
+      {fresh && <div className="card pad stack gap8" style={{background:'var(--bg-surface-2)'}}>
+        <div style={{fontWeight:700}}>Your sync key</div>
+        <div className="code" style={{fontSize:14,wordBreak:'break-all'}}>{fresh}</div>
+        <button className="btn sm" onClick={() => copy('key', fresh)}>{copied === 'key' ? 'Copied' : 'Copy key'}</button>
+        <div className="sub" style={{fontSize:13}}>Shown once. It can only send Health numbers to Tally. It can’t read your log or sign in.</div>
+      </div>}
+      {!fresh && <button className="btn" onClick={create}>{Ic.key} {tokens?.length ? 'Make another sync key' : 'Make a sync key'}</button>}
+      {err && <div className="err">{err}</div>}
+      <details>
+        <summary>Set up the Shortcut</summary>
+        <ol className="sub" style={{marginLeft:20,marginTop:10,lineHeight:1.55,display:'flex',flexDirection:'column',gap:8}}>
+          <li>Open <b>Shortcuts</b>, tap <b>+</b> and name it <b>Tally sync</b>.</li>
+          <li>Add <b>Find Health Samples</b>: type <b>Active Energy</b>, filter <b>Start Date is Today</b>. Then add <b>Calculate Statistics</b> set to <b>Sum</b>. If you wear an Apple Watch, also filter <b>Source is</b> your watch, so iPhone and Watch aren’t counted twice.</li>
+          <li>Add <b>Find Health Samples</b>: type <b>Steps</b>, <b>Start Date is Today</b>, then <b>Calculate Statistics</b> set to <b>Sum</b>.</li>
+          <li>Add <b>Find Health Samples</b>: type <b>Weight</b>, sort by <b>Start Date</b>, <b>Latest First</b>, limit <b>1</b>. Add another for <b>Body Fat Percentage</b> the same way.</li>
+          <li>Add <b>Format Date</b>: <b>Current Date</b>, format <b>Custom</b>, <b>yyyy-MM-dd</b>.</li>
+          <li>Add <b>Get Contents of URL</b>. URL: <span className="num" style={{wordBreak:'break-all',color:'var(--text-primary)'}}>{url}</span> <button className="btn ghost sm" style={{height:24,padding:'0 6px'}} onClick={() => copy('url', url)}>{copied === 'url' ? 'Copied' : 'Copy'}</button><br/>
+            Method <b>POST</b>. Header <b>Authorization</b> = <b>Bearer</b> followed by a space and your sync key. Request Body <b>JSON</b> with:
+            <b> date</b> → Formatted Date, <b>activeKcal</b> → first Statistics, <b>steps</b> → second Statistics, <b>weight</b> → Weight sample, <b>bodyFat</b> → Body Fat sample.</li>
+          <li>Tap ▶︎ once and allow Health access. You should see <b className="num">"ok": true</b>.</li>
+          <li>In the <b>Automation</b> tab, tap <b>+</b> → <b>Time of Day</b> → <b>21:30</b>, <b>Daily</b>, <b>Run Immediately</b>, then choose <b>Tally sync</b>. Add a second automation at lunchtime if you want daytime updates.</li>
+        </ol>
+        <p className="sub" style={{marginTop:10}}>Running it again on the same day replaces that day’s numbers. Nothing is ever counted twice.</p>
+      </details>
+      {(tokens || []).map(t => <div key={t.id} className="row gap10">
+        <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
+        <div className="grow"><div style={{fontWeight:600}}><span className="num">{t.prefix}…</span> {t.label}</div>
+          <div className="muted" style={{fontSize:12}}>Made {new Date(t.created_at).toLocaleDateString('en-GB')} · {t.last_used ? 'last used ' + new Date(t.last_used).toLocaleDateString('en-GB') : 'not used yet'}</div></div>
+        <button className="icon-btn" aria-label="Remove sync key" onClick={() => revoke(t.id)}>{Ic.trash}</button>
+      </div>)}
+    </div>);
 }
 
 /* ── views ── */
@@ -1335,7 +1432,7 @@ function TodayView({ state, actions, date, setDate, open }) {
       </div>
 
       <div className="card pad stack gap16">
-        <Ring eaten={day.kcal} target={t.kcal}/>
+        <Ring eaten={day.kcal} target={t.kcal} bonus={t.exerciseBonus}/>
         <div className="row gap12">
           <MacroBar label="Protein" value={day.protein} target={t.protein} color="var(--protein)"/>
           <MacroBar label="Carbs" value={day.carbs} target={t.carbs} color="var(--carbs)"/>
@@ -1377,6 +1474,34 @@ function TodayView({ state, actions, date, setDate, open }) {
             </div>}
           </div>);
       })}
+
+      {(() => {
+        const ex = t.exercise;
+        const h = ex.health;
+        return (
+          <div className="card pad">
+            <div className="row between">
+              <div><h2>Exercise</h2>
+                <div className="sub num">{ex.credit > 0
+                  ? (t.eatBack > 0 ? `${fmtK(ex.credit)} kcal burned · +${fmtK(t.exerciseBonus)} to eat` : `${fmtK(ex.credit)} kcal burned · not added (Me → Exercise)`)
+                  : 'Workouts add calories to your day'}</div></div>
+              <button className="btn sm" onClick={() => open('exercise', null)}>{Ic.plus} Add</button>
+            </div>
+            {(h || ex.manual.length > 0) && <div className="stack" style={{marginTop:8}}>
+              {h && <div className="list-row" style={{cursor:'default'}}>
+                <span style={{width:22,height:22,color:'var(--danger)'}}>{Ic.heart}</span>
+                <div className="grow"><div className="name">Apple Health</div>
+                  <div className="meta" style={{whiteSpace:'normal'}}>{[h.steps != null ? `${fmtK(h.steps)} steps` : null, h.activeKcal != null ? `${fmtK(h.activeKcal)} active kcal` : null, ex.baseline ? (ex.source === 'steps' ? `first ${fmtK(ex.baseline)} steps already in your activity level` : `first ${fmtK(ex.baseline)} already in your activity level`) : null].filter(Boolean).join(' · ')}</div></div>
+                <div className="num" style={{fontWeight:700}}>+{fmtK(ex.credit)}</div>
+              </div>}
+              {ex.manual.map(x => <div key={x.id} className="list-row" onClick={() => open('exercise', x)}>
+                <span style={{width:22,height:22,color:'var(--accent)'}}>{Ic.run}</span>
+                <div className="grow"><div className="name">{x.name}</div><div className="meta">{[`${x.minutes} min`, ex.source !== 'manual' ? 'counted by Apple Health' : null].filter(Boolean).join(' · ')}</div></div>
+                <div className="num" style={{fontWeight:700,opacity: ex.source !== 'manual' ? .45 : 1}}>{fmtK(x.kcal)}</div>
+              </div>)}
+            </div>}
+          </div>);
+      })()}
     </div>);
 }
 
@@ -1448,11 +1573,12 @@ function InsightsView({ state, actions }) {
       <div className="card pad stack gap10">
         <h2>Your numbers</h2>
         {[
-          ['Resting burn (BMR)', `${fmtK(E.bmr(state.profile, kg))} kcal`],
+          ['Resting burn (BMR)', `${fmtK(t.bmr)} kcal${t.bmrMethod === 'bodyfat' ? ` (from ${t.fatPct}% body fat)` : ' (standard formula)'}`],
           ['Maintenance (formula)', `${fmtK(t.est.formula)} kcal`],
           ['Maintenance (from your data)', t.est.observed ? `${fmtK(t.est.observed)} kcal` : `after 2 weeks of logging (${t.est.loggedDays}/14 days)`],
           ['Maintenance used', `${fmtK(t.tdee)} kcal`],
-          ['Daily target', `${fmtK(t.kcal)} kcal${state.profile?.override?.kcal ? ' (custom)' : ''}`],
+          ['Daily target', `${fmtK(t.kcalBase)} kcal${state.profile?.override?.kcal ? ' (custom)' : ''}`],
+          ['Exercise added today', t.exerciseBonus ? `+${fmtK(t.exerciseBonus)} kcal (${t.eatBack === 1 ? 'all' : 'half'} of ${fmtK(t.exercise.credit)})` : (t.eatBack ? 'none yet' : 'off')],
           ['Daily deficit', t.deficit != null ? `${fmtK(t.deficit)} kcal (${Math.round((t.deficitPct || 0) * 100)}%)` : '—'],
           ['Expected pace', t.plannedPaceKg != null ? `${E.fmtWeight(t.plannedPaceKg, units)} / week` : '—'],
           ['BMI', bmi ? bmi.toFixed(1) : '—'],
@@ -1584,7 +1710,7 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
           {E.PACES.map(pc => <option key={pc.id} value={String(pc.kg)}>{pc.label} · {E.fmtWeight(pc.kg, draft.units || 'kg')} a week</option>)}
           <option value="0">Maintain my weight</option>
         </select></Field>
-        <Field label="Activity"><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label} — {a.hint}</option>)}</select></Field>
+        <Field label="Day-to-day activity" hint="Your normal day, not counting workouts. Log those as exercise or sync Apple Health."><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label} — {a.hint}</option>)}</select></Field>
         <div className="row gap10">
           <Field label="Height" group><HeightInput cm={draft.heightCm} unit={heightUnitFor(draft)} onChange={v => set('heightCm', v)} onUnitChange={u => set('heightUnit', u)}/></Field>
         </div>
@@ -1592,6 +1718,20 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
           <Field label="Year of birth"><input className="input num" inputMode="numeric" value={draft.birthYear || ''} onChange={e => set('birthYear', Number(e.target.value.replace(/\D/g,'').slice(0,4)) || '')}/></Field>
           <Field label="Sex"><select className="select" value={draft.sex || 'female'} onChange={e => set('sex', e.target.value)}><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></Field>
         </div>
+        {(() => {
+          const kgNow = E.currentWeight(state);
+          const fatNow = E.bodyFat({ ...state, profile: draft });
+          const standard = E.bmr(draft, kgNow);
+          const lean = E.katch(kgNow, fatNow);
+          return <>
+            <Field label="Body fat %" hint={E.bodyFat({ ...state, profile: {} }) ? `Latest reading ${E.bodyFat({ ...state, profile: {} })}%, from your weigh-ins or Apple Health.` : 'Optional. From a smart scale; Apple Health keeps it updated.'}>
+              <input className="input num" inputMode="decimal" placeholder="e.g. 35.6" value={draft.bodyFatPct || ''} onChange={e => set('bodyFatPct', parseFloat(e.target.value.replace(/[^\d.]/g, '')) || null)}/></Field>
+            {fatNow && standard && lean && <Field label="Work out resting burn from" group>
+              <Seg value={draft.bmrMethod === 'bodyfat' ? 'bodyfat' : 'formula'} onChange={v => set('bmrMethod', v)} options={[['formula', `Standard · ${fmtK(standard)}`], ['bodyfat', `Body fat · ${fmtK(lean)}`]]}/>
+              <small className="muted" style={{fontSize:12}}>The standard formula (also used by MyFitnessPal) uses height, weight, age and sex. “Body fat” uses your lean mass, like a smart scale’s BMR. It’s more accurate when your body fat or muscle is well above or below average.</small>
+            </Field>}
+          </>;
+        })()}
         <details>
           <summary>Custom targets {draft.override && Object.values(draft.override).some(Boolean) ? '(on)' : ''}</summary>
           <div className="stack gap10" style={{marginTop:12}}>
@@ -1605,6 +1745,17 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         <div className="row between" style={{fontSize:14}}><span className="sub">Daily target</span><b className="num">{fmtK(t.kcal)} kcal · P {t.protein} · C {t.carbs} · F {t.fat}</b></div>
         {dirty && <button className="btn primary" onClick={() => actions.saveProfile(draft)}>Save changes</button>}
       </div>
+
+      <div className="card pad stack gap12">
+        <h2>Exercise</h2>
+        <Field label="Add exercise calories to your daily target" group>
+          <Seg value={String(draft.exerciseEatBack == null ? 0.5 : draft.exerciseEatBack)} onChange={v => set('exerciseEatBack', Number(v))} options={[['0','Off'],['0.5','Half'],['1','All']]}/>
+        </Field>
+        <p className="sub">Half is recommended. Watches and exercise estimates usually overstate what you burned, and eating it all back is the most common reason weight loss stalls. MyFitnessPal adds all of it.</p>
+        {dirty && <button className="btn primary" onClick={() => actions.saveProfile(draft)}>Save changes</button>}
+      </div>
+
+      <AppleHealthCard/>
 
       <div className="card pad stack gap12">
         <h2>Import & backup</h2>
@@ -1774,6 +1925,13 @@ function App() {
       removeEntry(id) { setState(s => ({ ...s, entries: s.entries.filter(x => x.id !== id), entriesDeleted: [...s.entriesDeleted, { id, deletedAt: now() }] })); },
       restoreEntry(e) { setState(s => ({ ...s, entries: upsert(s.entries, { ...e, updated: now() }), entriesDeleted: s.entriesDeleted.filter(t => t.id !== e.id) })); },
       saveFood(f) { setState(s => ({ ...s, foods: rememberFood(s.foods, f) })); },
+      saveExercise(x) {
+        setState(s => ({ ...s, exercise: upsert(s.exercise || [], { ...x, created: x.created || now(), updated: now() }), exerciseDeleted: (s.exerciseDeleted || []).filter(t => t.id !== x.id) }));
+      },
+      removeExercise(x) {
+        setState(s => ({ ...s, exercise: (s.exercise || []).filter(y => y.id !== x.id), exerciseDeleted: [...(s.exerciseDeleted || []), { id: x.id, deletedAt: now() }] }));
+        showToast('Workout deleted', () => setState(s => ({ ...s, exercise: upsert(s.exercise || [], { ...x, updated: Date.now() }), exerciseDeleted: (s.exerciseDeleted || []).filter(t => t.id !== x.id) })));
+      },
       receiptCommit({ foods, entries, aliases }) {
         setState(s => {
           let fs = s.foods;
@@ -1783,7 +1941,14 @@ function App() {
       },
       /* One reading per day: the id is the date, so a second weigh-in on the
          same day replaces the first rather than skewing the trend. */
-      logWeight(date, kg) { setState(s => ({ ...s, weights: upsert(s.weights, { id: 'w:' + date, date, kg: Math.round(kg * 100) / 100, created: now(), updated: now() }), weightsDeleted: s.weightsDeleted.filter(t => t.id !== 'w:' + date) })); },
+      logWeight(date, kg, fatPct) {
+        setState(s => {
+          const prev = s.weights.find(w => w.id === 'w:' + date);
+          const fat = fatPct > 2 && fatPct < 75 ? Math.round(fatPct * 10) / 10 : prev?.fatPct;
+          return { ...s, weights: upsert(s.weights, { ...(prev || {}), id: 'w:' + date, date, kg: Math.round(kg * 100) / 100, ...(fat ? { fatPct: fat } : {}), source: 'manual', created: prev?.created || now(), updated: now() }),
+                   weightsDeleted: s.weightsDeleted.filter(t => t.id !== 'w:' + date) };
+        });
+      },
       removeWeight(w) {
         setState(s => ({ ...s, weights: s.weights.filter(x => x.id !== w.id), weightsDeleted: [...s.weightsDeleted, { id: w.id, deletedAt: now() }] }));
         showToast('Weigh-in deleted', () => setState(s => ({ ...s, weights: upsert(s.weights, { ...w, updated: Date.now() }), weightsDeleted: s.weightsDeleted.filter(t => t.id !== w.id) })));
@@ -1877,6 +2042,7 @@ function App() {
       {modal?.kind === 'add' && <AddFoodSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} meal={modal.arg?.meal} tab={modal.arg?.tab} onClose={closeModal}/>}
       {modal?.kind === 'entry' && <EntrySheet entry={modal.arg} state={state} actions={actions} onClose={closeModal}/>}
       {modal?.kind === 'weigh' && <WeighInSheet state={state} actions={actions} onClose={closeModal}/>}
+      {modal?.kind === 'exercise' && <ExerciseSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} item={modal.arg} onClose={closeModal}/>}
       {modal?.kind === 'import' && <ImportSheet state={state} actions={actions} onClose={closeModal}/>}
       {recovery && <RecoverySheet code={recovery.recoveryCode} isNew={recovery.isNew} onDone={() => { setRecovery(null); loadAccount(); }}/>}
       {toast && <div className="toast glass" role="status" key={toast.id}>{toast.msg}{toast.undo && <button onClick={() => { toast.undo(); setToast(null); }}>Undo</button>}</div>}

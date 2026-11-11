@@ -118,3 +118,52 @@ test('client merge mirrors the server: newer tombstone wins, newer edit undelete
   expect(m.entries.find((e) => e.id === 'b')).toBeUndefined();
   expect(m.entries.find((e) => e.id === 'c')).toBeTruthy();
 });
+
+test.describe('exercise & body composition', () => {
+  const me = { ...profile, activity: 'sedentary', paceKg: 1, heightCm: 186, birthYear: 1999, goalKg: 100 };
+  const base = { profile: me, weights: [{ id: 'w', date: T, kg: 126.4, fatPct: 35.6 }], entries: [], exercise: [] };
+
+  test('Katch–McArdle from body fat matches what a smart scale reports', () => {
+    const t = E.targets({ ...base, profile: { ...me, bmrMethod: 'bodyfat' } }, T);
+    expect(Math.round(t.bmr)).toBe(2128);                 /* the scale said 2,114 */
+    expect(t.bmrMethod).toBe('bodyfat');
+    expect(E.targets(base, T).bmrMethod).toBe('formula');  /* opt-in only */
+  });
+
+  test('workouts are net of resting burn, and half is added back by default', () => {
+    expect(E.exerciseKcal('gym', 60, 126.4)).toBe(Math.round(4 * 126.4));
+    const workout = [{ id: 'g', date: T, kind: 'workout', kcal: 500 }];
+    const t = E.targets({ ...base, exercise: workout }, T);
+    expect(t.exerciseBonus).toBe(250);
+    expect(t.kcal).toBe(t.kcalBase + 250);
+    expect(t.deficit).toBe(E.targets(base, T).deficit);   /* the plan itself doesn't move */
+    expect(E.targets({ ...base, profile: { ...me, exerciseEatBack: 1 }, exercise: workout }, T).exerciseBonus).toBe(500);
+    const off = E.targets({ ...base, profile: { ...me, exerciseEatBack: 0 }, exercise: workout }, T);
+    expect(off.kcal).toBe(off.kcalBase);
+  });
+
+  test('Apple Health: only active energy above the activity level counts, and workouts are not double-counted', () => {
+    const day = E.exerciseForDay({ ...base, exercise: [
+      { id: 'health:' + T, date: T, kind: 'health', activeKcal: 650, steps: 9000 },
+      { id: 'g', date: T, kind: 'workout', kcal: 400 },
+    ] }, T);
+    expect(day.source).toBe('health');
+    expect(day.baseline).toBeGreaterThan(150);
+    expect(day.credit).toBe(650 - day.baseline);
+  });
+
+  test('steps-only days credit steps above the level baseline', () => {
+    const quiet = E.exerciseForDay({ ...base, exercise: [{ id: 'h', date: T, kind: 'health', steps: 4000 }] }, T);
+    const busy = E.exerciseForDay({ ...base, exercise: [{ id: 'h', date: T, kind: 'health', steps: 15000 }] }, T);
+    expect(quiet.credit).toBe(0);
+    expect(busy.credit).toBe(Math.round(10000 * 0.0005 * 126.4));
+  });
+
+  test('adaptive maintenance takes logged exercise out so it is not counted twice', () => {
+    const ws = series(130, 0.5, 28);
+    const ex = Array.from({ length: 28 }, (_, i) => ({ id: 'x' + i, date: E.addDays(T, -i), kind: 'workout', kcal: 300 }));
+    const without = E.adaptiveTdee({ profile: me, weights: ws, entries: intake(2400) }, T).observed;
+    const withEx = E.adaptiveTdee({ profile: me, weights: ws, entries: intake(2400), exercise: ex }, T).observed;
+    expect(Math.round(without - withEx)).toBe(300);
+  });
+});

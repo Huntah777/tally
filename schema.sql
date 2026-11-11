@@ -58,6 +58,19 @@ CREATE TABLE IF NOT EXISTS login_failures (
 );
 CREATE INDEX IF NOT EXISTS idx_login_failures ON login_failures (key, at);
 
+-- Sync keys for automations that can't hold a session cookie — today the
+-- iOS Shortcut that sends Apple Health data to /api/ingest. Only the SHA-256
+-- is stored; the key itself is shown once when it's made.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  token_hash  TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  label       TEXT,
+  prefix      TEXT NOT NULL,                -- first characters, to tell keys apart
+  created_at  INTEGER NOT NULL,
+  last_used   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens (user_id);
+
 -- ── app data ─────────────────────────────────────────────────────────
 -- One JSON blob per user, merged server-side on every PUT (see
 -- functions/api/state.js) so two devices logging at once can't clobber each

@@ -94,3 +94,16 @@ test('height can be entered in feet and inches, whatever the weight unit', async
   await page.getByText('Height', { exact: true }).click();
   await expect(page.getByLabel('Feet')).toBeVisible();
 });
+
+test('log a workout and the target for the day goes up by half of it', async ({ page }) => {
+  await signUp(page);
+  await onboard(page);
+  const target = async () => Number((await page.locator('.label:text-is("Target") + div').innerText()).replace(/\D/g, ''));
+  const before = await target();
+  await page.getByRole('heading', { name: 'Exercise' }).locator('xpath=../..').getByRole('button', { name: 'Add' }).click();
+  await page.getByRole('button', { name: 'Running' }).click();
+  await page.getByLabel('Calories burned').fill('400');
+  await page.getByRole('button', { name: /^Log · 400 kcal/ }).click();
+  await expect(page.getByText('incl. +200 exercise')).toBeVisible();
+  expect(await target()).toBe(before + 200);
+});
