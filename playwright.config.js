@@ -4,6 +4,8 @@ import { defineConfig, devices } from '@playwright/test';
    API and UI specs run against `wrangler pages dev` with a throwaway local
    D1, so they exercise the real Functions, auth and merge code. */
 const PORT = 8791;
+/* The test server runs invite-only, like production. */
+export const INVITE = 'Test-Invite-42';
 
 export default defineConfig({
   testDir: './tests',
@@ -21,7 +23,7 @@ export default defineConfig({
     /* Fresh database every run: the login throttle is per IP and every
        test shares one, so leftover failures from a previous run would lock
        later runs out. */
-    command: `node -e "require('fs').rmSync('.wrangler/test-state',{recursive:true,force:true})" && npx wrangler d1 execute tally-db --local --file=schema.sql --persist-to=.wrangler/test-state && node scripts/build.mjs && npx wrangler pages dev --port ${PORT} --persist-to=.wrangler/test-state`,
+    command: `node -e "require('fs').rmSync('.wrangler/test-state',{recursive:true,force:true})" && npx wrangler d1 execute tally-db --local --file=schema.sql --persist-to=.wrangler/test-state && node scripts/build.mjs && npx wrangler pages dev --port ${PORT} --persist-to=.wrangler/test-state --binding SIGNUP_CODE=${INVITE}`,
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 90_000,

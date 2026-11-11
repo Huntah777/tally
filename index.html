@@ -657,6 +657,9 @@ function AuthScreen({ onSignedIn }) {
   const [code, setCode] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  /* Ask up front when the server is invite-only, rather than letting
+     someone fill the form in only to be told afterwards. */
+  useEffect(() => { api('/api/health').then(h => h.invite && setNeedInvite(true)).catch(() => {}); }, []);
 
   const run = async (fn) => {
     setErr(''); setBusy(true);
@@ -689,7 +692,8 @@ function AuthScreen({ onSignedIn }) {
           <Field label={mode === 'recover' ? 'New password' : 'Password'} hint={mode !== 'signin' ? 'At least 8 characters.' : null}>
             <input className="input" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={mode === 'signin' ? 1 : 8} value={password} onChange={e => setPassword(e.target.value)}/>
           </Field>
-          {mode === 'signup' && needInvite && <Field label="Invite code"><input className="input" value={invite} onChange={e => setInvite(e.target.value)} required/></Field>}
+          {mode === 'signup' && needInvite && <Field label="Invite code" hint="Tally is invite-only. Ask whoever sent you the link for the code.">
+            <input className="input" autoComplete="off" autoCapitalize="none" spellCheck="false" value={invite} onChange={e => setInvite(e.target.value)} required/></Field>}
           {err && <div className="err" role="alert">{err}</div>}
           <button className="btn primary block" disabled={busy}>{busy ? <span className="spinner"/> : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Reset password'}</button>
         </form>

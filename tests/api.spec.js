@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
+import { INVITE } from '../playwright.config.js';
 
 /* Every test makes its own users, so specs can run in parallel against one
    local D1. */
@@ -8,7 +9,7 @@ const unique = () => `u${Date.now()}${Math.random().toString(36).slice(2, 7)}@ta
 async function newUser(baseURL, password = 'correct-horse-battery') {
   const ctx = await pwRequest.newContext({ baseURL });
   const email = unique();
-  const r = await ctx.post('/api/auth/signup', { headers: H, data: { email, password } });
+  const r = await ctx.post('/api/auth/signup', { headers: H, data: { email, password, invite: INVITE } });
   expect(r.status()).toBe(201);
   return { ctx, email, password, body: await r.json() };
 }
@@ -23,9 +24,9 @@ test('signup returns a recovery code and a session', async ({ baseURL }) => {
 test('duplicate email, short password and bad email are refused', async ({ baseURL }) => {
   const { email } = await newUser(baseURL);
   const ctx = await pwRequest.newContext({ baseURL });
-  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'whatever-long' } })).status()).toBe(409);
-  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email: unique(), password: 'short' } })).status()).toBe(400);
-  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email: 'not-an-email', password: 'long-enough-pw' } })).status()).toBe(400);
+  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'whatever-long', invite: INVITE } })).status()).toBe(409);
+  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email: unique(), password: 'short', invite: INVITE } })).status()).toBe(400);
+  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email: 'not-an-email', password: 'long-enough-pw', invite: INVITE } })).status()).toBe(400);
 });
 
 test('login, wrong password, logout', async ({ baseURL }) => {
@@ -102,4 +103,16 @@ test('deleting the account removes the user and their data', async ({ baseURL })
   expect((await ctx.post('/api/auth/delete', { headers: H, data: { password } })).status()).toBe(200);
   const again = await pwRequest.newContext({ baseURL });
   expect((await again.post('/api/auth/login', { headers: H, data: { email, password } })).status()).toBe(401);
+});
+
+test('invite-only: health says so, and missing or wrong codes are refused', async ({ baseURL }) => {
+  const ctx = await pwRequest.newContext({ baseURL });
+  expect((await (await ctx.get('/api/health')).json()).invite).toBe(true);
+  const email = unique();
+  const missing = await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'long-enough-pw' } });
+  expect(missing.status()).toBe(403);
+  expect((await missing.json()).field).toBe('invite');
+  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'long-enough-pw', invite: 'guess' } })).status()).toBe(403);
+  /* case and surrounding spaces don't matter — people type these on phones */
+  expect((await ctx.post('/api/auth/signup', { headers: H, data: { email, password: 'long-enough-pw', invite: '  ' + INVITE.toUpperCase() + ' ' } })).status()).toBe(201);
 });

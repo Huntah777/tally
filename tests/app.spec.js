@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { INVITE } from '../playwright.config.js';
 
 const unique = () => `ui${Date.now()}${Math.random().toString(36).slice(2, 6)}@tally.test`;
 const PASSWORD = 'ui-test-password';
@@ -9,6 +10,7 @@ async function signUp(page, email = unique()) {
   await page.getByRole('tab', { name: 'Create account' }).click();
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByLabel('Invite code').fill(INVITE);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.locator('.code')).toHaveText(/^[A-Z2-9-]{19}$/);
   await page.getByRole('button', { name: 'I’ve saved it' }).click();

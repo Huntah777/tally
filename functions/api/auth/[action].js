@@ -20,7 +20,7 @@ import {
   json, csrfOk, currentUser, startSession, endSession, clearSessionCookie,
   hashPassword, verifyPassword, newRecoveryCode, hashRecoveryCode,
   normaliseEmail, emailOk, passwordProblem, throttled, recordFailure, readJson, randomId,
-  bytesEqual,
+  bytesEqual, sha256,
 } from '../../_lib/auth.js';
 
 const GENERIC_LOGIN_ERROR = 'That email and password don’t match';
@@ -35,11 +35,18 @@ async function signup({ request, env }) {
   const pwErr = passwordProblem(body.password);
   if (pwErr) return json({ error: pwErr }, 400);
 
+  /* Invite-only when SIGNUP_CODE is set. Wrong codes count towards the same
+     per-IP throttle as wrong passwords, so the code can't be brute-forced,
+     and both sides are hashed first so the comparison is fixed-length. */
   const invite = (env.SIGNUP_CODE || '').trim();
   if (invite) {
-    const given = enc.encode(String(body.invite || '').trim());
-    const want = enc.encode(invite);
-    if (!bytesEqual(given, want)) return json({ error: 'That invite code isn’t right', field: 'invite' }, 403);
+    if (await throttled(request, env, null)) return json({ error: 'Too many attempts — wait 15 minutes and try again' }, 429);
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const [given, want] = await Promise.all([sha256(norm(body.invite)), sha256(norm(invite))]);
+    if (!bytesEqual(given, want)) {
+      await recordFailure(request, env, null);
+      return json({ error: 'That invite code isn’t right', field: 'invite' }, 403);
+    }
   }
 
   if (await env.DB.prepare('SELECT 1 FROM users WHERE email = ?').bind(email).first()) {
