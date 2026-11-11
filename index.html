@@ -1451,61 +1451,89 @@ function ExerciseSheet({ state, actions, date, item, onClose }) {
     </Sheet>);
 }
 
-/* Sync keys + setup guide for the Apple Health Shortcut. */
+/* Apple Health setup, in three short steps: copy your link, add (or make) the
+   Shortcut, schedule it. Everything fiddly lives on the server instead: the
+   key travels inside the link, the date comes from your time zone, and raw
+   sample lists are summed there, so the Shortcut is just "find samples, send
+   them". With SHORTCUT_URL set, step 2 is a single "Add Shortcut" tap. */
+function HealthStep({ n, title, done, children }) {
+  return (
+    <div className="row gap12" style={{alignItems:'flex-start'}}>
+      <div className="num" style={{width:28,height:28,borderRadius:14,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,
+        background: done ? 'var(--accent)' : 'var(--fill)', color: done ? 'var(--accent-ink)' : 'var(--text-primary)'}}>{done ? '✓' : n}</div>
+      <div className="stack gap8 grow"><div style={{fontWeight:700,paddingTop:3}}>{title}</div>{children}</div>
+    </div>);
+}
+
 function AppleHealthCard() {
   const [tokens, setTokens] = useState(null);
-  const [fresh, setFresh] = useState(null);
+  const [link, setLink] = useState(null);
+  const [shortcut, setShortcut] = useState(null);
   const [err, setErr] = useState('');
-  const [copied, setCopied] = useState('');
-  const url = location.origin + '/api/ingest';
+  const [copied, setCopied] = useState(false);
   const load = () => api('/api/tokens').then(r => setTokens(r.tokens || [])).catch(e => setErr(e.message));
-  useEffect(() => { load(); }, []);
-  const copy = (what, text) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1500); };
-  const create = async () => {
+  useEffect(() => { load(); api('/api/health').then(h => setShortcut(h.shortcut || null)).catch(() => {}); }, []);
+  const make = async () => {
     setErr('');
-    try { const r = await api('/api/tokens', { method: 'POST', body: { label: 'Apple Health Shortcut' } }); setFresh(r.token); load(); }
+    try { const r = await api('/api/tokens', { method: 'POST', body: { label: 'Apple Health Shortcut' } }); setLink(r.url); load(); }
     catch (e) { setErr(e.message); }
   };
+  const copy = () => { navigator.clipboard?.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); };
   const revoke = async (id) => {
-    if (!confirm('Remove this sync key? A Shortcut using it will stop syncing.')) return;
+    if (!confirm('Remove this sync link? A Shortcut using it will stop syncing.')) return;
     await api('/api/tokens?id=' + encodeURIComponent(id), { method: 'DELETE' }); load();
   };
   const synced = (tokens || []).map(t => t.last_used).filter(Boolean).sort().pop();
+  const hasLink = !!link || (tokens || []).length > 0;
   return (
-    <div className="card pad stack gap12">
+    <div className="card pad stack gap16">
       <div className="row gap10"><span style={{color:'var(--danger)',width:22,height:22}}>{Ic.heart}</span><h2>Apple Health</h2></div>
-      <p className="sub">Web apps can’t read Apple Health directly; only native iPhone apps can. Instead, a Shortcut on your iPhone sends Tally your active calories, steps, weight and body fat every evening. It takes about five minutes to set up, once.</p>
-      {synced && <div className="sub">Last sync: <b style={{color:'var(--text-primary)'}}>{new Date(synced).toLocaleString('en-GB', { weekday:'short', hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' })}</b></div>}
-      {fresh && <div className="card pad stack gap8" style={{background:'var(--bg-surface-2)'}}>
-        <div style={{fontWeight:700}}>Your sync key</div>
-        <div className="code" style={{fontSize:14,wordBreak:'break-all'}}>{fresh}</div>
-        <button className="btn sm" onClick={() => copy('key', fresh)}>{copied === 'key' ? 'Copied' : 'Copy key'}</button>
-        <div className="sub" style={{fontSize:13}}>Shown once. It can only send Health numbers to Tally. It can’t read your log or sign in.</div>
-      </div>}
-      {!fresh && <button className="btn" onClick={create}>{Ic.key} {tokens?.length ? 'Make another sync key' : 'Make a sync key'}</button>}
+      {synced
+        ? <div className="sub">Syncing ✓ · last update <b style={{color:'var(--text-primary)'}}>{new Date(synced).toLocaleString('en-GB', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</b></div>
+        : <p className="sub">Sends your active calories and weight from your iPhone to Tally each evening. You set it up once.</p>}
+
+      <HealthStep n={1} title="Copy your sync link" done={copied}>
+        {link
+          ? <><div className="code" style={{fontSize:12,textAlign:'left',wordBreak:'break-all',padding:12}}>{link}</div>
+              <button className="btn primary sm" style={{alignSelf:'flex-start'}} onClick={copy}>{copied ? 'Copied' : 'Copy link'}</button>
+              <div className="muted" style={{fontSize:12}}>Shown once. Keep it private. It can only send numbers to Tally.</div></>
+          : <button className="btn sm" style={{alignSelf:'flex-start'}} onClick={make}>{hasLink ? 'Make a new link' : 'Make my link'}</button>}
+      </HealthStep>
+
+      {shortcut
+        ? <HealthStep n={2} title="Add the Tally Shortcut">
+            <a className="btn primary sm" style={{alignSelf:'flex-start',textDecoration:'none'}} href={shortcut} target="_blank" rel="noopener">Add Shortcut</a>
+            <div className="sub">When it asks, paste your link.</div>
+          </HealthStep>
+        : <HealthStep n={2} title="Make the Shortcut">
+            <div className="sub">In <b>Shortcuts</b>, tap <b>+</b> and add these three actions:</div>
+            <ol className="sub" style={{marginLeft:18,display:'flex',flexDirection:'column',gap:6,lineHeight:1.45}}>
+              <li><b>Find Health Samples</b>: Active Energy, Start Date is Today</li>
+              <li><b>Find Health Samples</b>: Weight, Latest First, Limit 1</li>
+              <li><b>Get Contents of URL</b>: paste your link, Method <b>POST</b>, Request Body <b>JSON</b>, then add <b className="num">activeKcal</b> → the first Health Samples and <b className="num">weight</b> → the second</li>
+            </ol>
+            <div className="sub">Tap ▶︎ once and allow Health access.</div>
+          </HealthStep>}
+
+      <HealthStep n={3} title="Run it every evening" done={!!synced}>
+        <div className="sub">In the <b>Automation</b> tab, tap <b>+</b> → <b>Time of Day</b> → 21:30 → <b>Run Immediately</b> → your Shortcut.</div>
+      </HealthStep>
+
       {err && <div className="err">{err}</div>}
+
       <details>
-        <summary>Set up the Shortcut</summary>
-        <ol className="sub" style={{marginLeft:20,marginTop:10,lineHeight:1.55,display:'flex',flexDirection:'column',gap:8}}>
-          <li>Open <b>Shortcuts</b>, tap <b>+</b> and name it <b>Tally sync</b>.</li>
-          <li>Add <b>Find Health Samples</b>: type <b>Active Energy</b>, filter <b>Start Date is Today</b>. Then add <b>Calculate Statistics</b> set to <b>Sum</b>. If you wear an Apple Watch, also filter <b>Source is</b> your watch, so iPhone and Watch aren’t counted twice.</li>
-          <li>Add <b>Find Health Samples</b>: type <b>Steps</b>, <b>Start Date is Today</b>, then <b>Calculate Statistics</b> set to <b>Sum</b>.</li>
-          <li>Add <b>Find Health Samples</b>: type <b>Weight</b>, sort by <b>Start Date</b>, <b>Latest First</b>, limit <b>1</b>. Add another for <b>Body Fat Percentage</b> the same way.</li>
-          <li>Add <b>Format Date</b>: <b>Current Date</b>, format <b>Custom</b>, <b>yyyy-MM-dd</b>.</li>
-          <li>Add <b>Get Contents of URL</b>. URL: <span className="num" style={{wordBreak:'break-all',color:'var(--text-primary)'}}>{url}</span> <button className="btn ghost sm" style={{height:24,padding:'0 6px'}} onClick={() => copy('url', url)}>{copied === 'url' ? 'Copied' : 'Copy'}</button><br/>
-            Method <b>POST</b>. Header <b>Authorization</b> = <b>Bearer</b> followed by a space and your sync key. Request Body <b>JSON</b> with:
-            <b> date</b> → Formatted Date, <b>activeKcal</b> → first Statistics, <b>steps</b> → second Statistics, <b>weight</b> → Weight sample, <b>bodyFat</b> → Body Fat sample.</li>
-          <li>Tap ▶︎ once and allow Health access. You should see <b className="num">"ok": true</b>.</li>
-          <li>In the <b>Automation</b> tab, tap <b>+</b> → <b>Time of Day</b> → <b>21:30</b>, <b>Daily</b>, <b>Run Immediately</b>, then choose <b>Tally sync</b>. Add a second automation at lunchtime if you want daytime updates.</li>
-        </ol>
-        <p className="sub" style={{marginTop:10}}>Running it again on the same day replaces that day’s numbers. Nothing is ever counted twice.</p>
+        <summary>More options</summary>
+        <div className="stack gap10" style={{marginTop:10}}>
+          <p className="sub">To send <b>steps</b> or <b>body fat</b> too, add another Find Health Samples for <i>Steps</i> (Today) or <i>Body Fat Percentage</i> (Latest First, Limit 1), and add <b className="num">steps</b> / <b className="num">bodyFat</b> to the JSON.</p>
+          <p className="sub">If you wear an Apple Watch and your active calories look about double, add the filter <b>Source is</b> your watch to the first action.</p>
+          {(tokens || []).map(t => <div key={t.id} className="row gap10">
+            <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
+            <div className="grow"><div style={{fontWeight:600}}>Sync link <span className="num">{t.prefix}…</span></div>
+              <div className="muted" style={{fontSize:12}}>Made {new Date(t.created_at).toLocaleDateString('en-GB')} · {t.last_used ? 'last used ' + new Date(t.last_used).toLocaleDateString('en-GB') : 'not used yet'}</div></div>
+            <button className="icon-btn" aria-label="Remove sync link" onClick={() => revoke(t.id)}>{Ic.trash}</button>
+          </div>)}
+        </div>
       </details>
-      {(tokens || []).map(t => <div key={t.id} className="row gap10">
-        <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
-        <div className="grow"><div style={{fontWeight:600}}><span className="num">{t.prefix}…</span> {t.label}</div>
-          <div className="muted" style={{fontSize:12}}>Made {new Date(t.created_at).toLocaleDateString('en-GB')} · {t.last_used ? 'last used ' + new Date(t.last_used).toLocaleDateString('en-GB') : 'not used yet'}</div></div>
-        <button className="icon-btn" aria-label="Remove sync key" onClick={() => revoke(t.id)}>{Ic.trash}</button>
-      </div>)}
     </div>);
 }
 

@@ -161,6 +161,21 @@ test.describe('Apple Health sync', () => {
     expect((await ingest(ctx, key, { steps: 1 })).status()).toBe(401);
   });
 
+  test('the three-action Shortcut: key in the link, no date, raw sample lists', async ({ baseURL }) => {
+    const u = await newUser(baseURL);
+    const made = await (await u.ctx.post('/api/tokens', { headers: H, data: {} })).json();
+    expect(made.url).toMatch(/\/api\/ingest\?key=tly_/);
+    const r = await u.ctx.post(made.url, { data: {
+      activeKcal: '0.4 kcal\n12.6 kcal\n300 kcal',            /* a list turned into text */
+      weight: ['126.4 kg', '127.1 kg'],                         /* latest first */
+    } });
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    const londonToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    expect(body.date).toBe(londonToday);
+    expect(body.saved).toMatchObject({ activeKcal: 313, weightKg: 126.4 });
+  });
+
   test('a key only writes to its own account', async ({ baseURL }) => {
     const a = await withKey(baseURL), b = await newUser(baseURL);
     await ingest(a.ctx, a.key, { date: '2026-11-07', steps: 12345 });

@@ -22,7 +22,9 @@
 import { json, sha256hex } from '../_lib/auth.js';
 import { writeMerged } from '../_lib/state.js';
 
-const MAX_BODY = 16_384;
+/* A day of raw Apple Watch active-energy samples can run to a few thousand
+   entries — the Shortcut sends them unsummed, and Tally adds them up. */
+const MAX_BODY = 512 * 1024;
 
 /* "126.4 kg" → 126.4 ; [300, 212] → 512 ; "1,234" → 1234 */
 function numberIn(v, { sum = false } = {}) {
@@ -30,9 +32,12 @@ function numberIn(v, { sum = false } = {}) {
   if (Array.isArray(v)) {
     const ns = v.map((x) => numberIn(x)).filter((x) => x != null);
     if (!ns.length) return null;
-    return sum ? ns.reduce((a, b) => a + b, 0) : ns[ns.length - 1];
+    /* Samples are fetched "latest first", so for a reading the first is newest. */
+    return sum ? ns.reduce((a, b) => a + b, 0) : ns[0];
   }
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  /* Shortcuts may turn a list of samples into one text, a value per line. */
+  if (typeof v === 'string' && v.includes('\n')) return numberIn(v.split(/\r?\n/).map((x) => x.trim()).filter(Boolean), { sum });
   const s = String(v).replace(/(\d),(\d{3})\b/g, '$1$2').replace(',', '.');
   const m = s.match(/-?\d+(?:\.\d+)?/);
   return m ? Number(m[0]) : null;
@@ -41,7 +46,7 @@ function numberIn(v, { sum = false } = {}) {
 function weightKg(v) {
   const n = numberIn(v);
   if (n == null) return null;
-  const s = String(Array.isArray(v) ? v[v.length - 1] : v).toLowerCase();
+  const s = String(Array.isArray(v) ? v[0] : v).split('\n')[0].toLowerCase();
   if (/\blb|pound/.test(s)) return n / 2.2046226218;
   if (/\bst\b|stone/.test(s)) return n * 6.35029318;
   return n;
@@ -51,9 +56,13 @@ const inRange = (n, lo, hi) => (n != null && n >= lo && n <= hi ? n : null);
 const pick = (b, ...keys) => { for (const k of keys) if (b[k] != null && b[k] !== '') return b[k]; return null; };
 
 export async function onRequestPost({ request, env }) {
+  /* The key can come as a header or in the link itself (?key=…). The link
+     form is what the in-app setup uses: one thing to paste into the
+     Shortcut instead of a URL plus a header. It's write-only and HTTPS-only,
+     so carrying it in the URL is an acceptable trade for that simplicity. */
   const auth = request.headers.get('Authorization') || '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
-  if (!token.startsWith('tly_')) return json({ error: 'Missing sync key. Add the header Authorization: Bearer <your key>.' }, 401);
+  const token = (auth.replace(/^Bearer\s+/i, '') || new URL(request.url).searchParams.get('key') || '').trim();
+  if (!token.startsWith('tly_')) return json({ error: 'Missing sync key. Use the sync link from Tally → Me → Apple Health.' }, 401);
   const hash = await sha256hex(token);
   const row = await env.DB.prepare('SELECT user_id FROM api_tokens WHERE token_hash = ?').bind(hash).first();
   if (!row) return json({ error: 'That sync key isn’t valid any more. Make a new one in Tally → Me → Apple Health.' }, 401);
@@ -64,8 +73,11 @@ export async function onRequestPost({ request, env }) {
   try { b = JSON.parse(raw || '{}'); } catch { return json({ error: 'Body must be JSON — use “Request Body: JSON” in the Shortcut.' }, 400); }
   if (!b || typeof b !== 'object' || Array.isArray(b)) return json({ error: 'Body must be a JSON object' }, 400);
 
+  /* No date sent → "today" where the phone is. Cloudflare knows the
+     caller's time zone, which saves the Shortcut a Format Date step (and
+     gets the day right at 00:30 in summer, which UTC wouldn't). */
   let date = String(pick(b, 'date', 'day') || '').trim().slice(0, 10);
-  if (!date) date = new Date().toISOString().slice(0, 10);
+  if (!date) date = localToday(request.cf?.timezone);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: 'date must look like 2026-11-11 (Format Date → Custom → yyyy-MM-dd)' }, 400);
 
   const activeKcal = inRange(numberIn(pick(b, 'activeKcal', 'active', 'activeEnergy'), { sum: true }), 0, 8000);
@@ -129,6 +141,15 @@ export async function onRequestPost({ request, env }) {
     saved: { activeKcal: activeKcal == null ? null : Math.round(activeKcal), steps, weightKg: kg == null ? null : round1(kg), bodyFatPct: fat == null || fatUnattached ? null : round1(fat) },
     ...(fatUnattached ? { note: 'Body fat skipped: no weigh-in in the last 7 days to attach it to.' } : {}),
   });
+}
+
+function localToday(timeZone) {
+  try {
+    /* en-CA formats as yyyy-mm-dd */
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
 }
 
 function isoMinusDays(iso, n) {

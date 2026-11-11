@@ -125,8 +125,15 @@ both idle and mid-entry, and also tests the watchdog.
 
 A web app can't read HealthKit, so an iOS Shortcut does it. It runs as a
 daily personal automation and posts the day's active energy, steps, weight
-and body fat to `/api/ingest` using a per-user **sync key** (made in
-*Me → Apple Health*, stored hashed in the `api_tokens` table, shown once).
+and body fat to `/api/ingest` using a personal **sync link** with the key
+embedded (made in *Me → Apple Health*, stored hashed in the `api_tokens`
+table, shown once). The server does the fiddly parts: it takes the date from
+the caller's time zone, adds up raw sample lists, and parses units, so the
+Shortcut is three actions.
+
+For a one-tap setup, build the Shortcut once with an import question for the
+link, share it via iCloud, and set the link as `SHORTCUT_URL` in Pages →
+Settings → Variables. Me → Apple Health then shows an **Add Shortcut** button.
 A key can only send Health numbers; it can't read data or sign in. The
 step-by-step setup is in the app, in the same card.
 

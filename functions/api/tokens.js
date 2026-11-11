@@ -31,7 +31,9 @@ export const onRequest = withUser(async ({ request, env, user }) => {
     const id = await sha256hex(token);
     await env.DB.prepare('INSERT INTO api_tokens (token_hash, user_id, label, prefix, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(id, user.id, String(body.label || 'Apple Health Shortcut').slice(0, 60), token.slice(0, 8), Date.now()).run();
-    return json({ token, id }, 201);
+    /* The ready-made link the Shortcut posts to: one thing to paste. */
+    const url = `${new URL(request.url).origin}/api/ingest?key=${token}`;
+    return json({ token, id, url }, 201);
   }
 
   if (request.method === 'DELETE') {
