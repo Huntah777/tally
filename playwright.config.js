@@ -18,6 +18,8 @@ export default defineConfig({
     { name: 'api', testMatch: /api\.spec\.js/ },
     { name: 'chromium', testMatch: /app\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
     { name: 'iphone', testMatch: /app\.spec\.js/, use: { ...devices['iPhone 15'], browserName: 'chromium' } },
+    /* Rebuilds dist/ to simulate a deploy, so it runs alone, after everything else. */
+    { name: 'updates', testMatch: /updates\.spec\.js/, dependencies: ['unit', 'api', 'chromium', 'iphone'], use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
     /* Fresh database every run: the login throttle is per IP and every

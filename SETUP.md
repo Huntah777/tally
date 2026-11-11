@@ -99,6 +99,28 @@ npx wrangler d1 execute tally-db --remote --command "SELECT id, email FROM users
 Deleting that user's row lets them sign up fresh, but **this loses their
 data**. Ask them for a backup first (*Me → Download backup*).
 
+## Updates (no cache clearing needed)
+
+Same scheme as For The Ummah. `npm run build` stamps one build ID into
+`sw.js` (so each deploy gets a fresh shell cache), into `index.html`
+(`window.__TALLY_BUILD__`), into `/version.json`, and onto the `/lib/*.js`
+URLs. A new page can therefore never run against old engine code.
+
+An open app checks for a new build when it comes back to the foreground, when
+it comes back online, and every 30 minutes. The new service worker takes over
+at once. The page then reloads, but **only when it's safe**: never while a
+sheet is open or a field has focus. In that case a "New version ready" pill
+waits, and the switch happens as soon as the person is done. There's at most
+one automatic reload per build, so a broken deploy can't cause a reload loop.
+
+If the app ever fails to start (a broken deploy or a bad cache), a plain-JS
+watchdog shows **Repair app** after 10 seconds instead of a blank screen. The
+same button is under *Me → App*. It clears the cached shell and reloads, and
+your data isn't touched.
+
+`tests/updates.spec.js` simulates a deploy against the real service worker,
+both idle and mid-entry, and also tests the watchdog.
+
 ## Apple Health sync
 
 A web app can't read HealthKit, so an iOS Shortcut does it. It runs as a

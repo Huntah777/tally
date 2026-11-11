@@ -1,6 +1,11 @@
 /* Tally service worker — offline shell.
-   Bump CACHE on every deploy that changes a SHELL file. */
-const CACHE = 'tally-v2';
+
+   __BUILD_ID__ is replaced by scripts/build.mjs, so every deploy gets a fresh
+   shell cache without a hand-bumped version (same as For The Ummah). The
+   page notices the new worker taking over and reloads itself when it's safe;
+   see Updates in index.html. */
+const BUILD = '__BUILD_ID__';
+const CACHE = 'tally-shell-' + BUILD;
 /* Large and only needed for receipts, so cached on first use instead of at
    install — a fresh install shouldn't cost 7 MB of mobile data. */
 const LAZY = 'tally-lazy-v1';
@@ -27,10 +32,14 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+/* Take over open pages straight away (after clearing the old shell), so the
+   page sees controllerchange and can move itself onto the new build. */
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) =>
-    Promise.all(keys.filter((k) => k !== CACHE && k !== LAZY).map((k) => caches.delete(k)))));
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k !== CACHE && k !== LAZY).map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -49,6 +58,9 @@ self.addEventListener('fetch', (event) => {
   }
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
+  /* The deploy marker must always come from the network, or an open app
+     could never see that a new version exists. */
+  if (url.pathname === '/version.json') return;
 
   // OCR reader, barcode library — cache on first use
   if (url.pathname.startsWith('/vendor/tesseract/') || url.pathname === '/vendor/zxing.min.js') {

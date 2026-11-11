@@ -12,6 +12,9 @@
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)"/>
 <meta name="format-detection" content="telephone=no"/>
 <script>
+  /* Replaced by scripts/build.mjs; 'dev' when unbuilt. */
+  window.__TALLY_BUILD__ = '__TALLY_BUILD__VALUE';
+  if (window.__TALLY_BUILD__.indexOf('__') === 0) window.__TALLY_BUILD__ = 'dev';
   window._installPrompt = null;
   window.addEventListener('beforeinstallprompt', function(e) {
     e.preventDefault();
@@ -355,6 +358,102 @@ async function api(path, { method = 'GET', body, headers = {} } = {}) {
   data.__etag = r.headers.get('ETag');
   return data;
 }
+
+/* ── updates ─────────────────────────────────────────────────────────
+   Picking up a new deploy without anyone clearing the cache (the same scheme
+   as For The Ummah, src/lib/updates.ts).
+
+   Why it's needed: a Home Screen app on iOS is resumed, not reloaded, so the
+   browser's own service-worker check (which runs on navigation) almost never
+   happens, and when a new worker did take over, the open page kept running
+   the old code.
+
+   1. Every build has one id (scripts/build.mjs): in the page
+      (window.__TALLY_BUILD__), in sw.js and in /version.json.
+   2. When the app comes back to the foreground, comes online, or every 30
+      minutes, it re-checks sw.js and fetches version.json uncached.
+   3. The new worker takes over at once, so controllerchange fires. The app
+      then reloads, but never mid-task: while a sheet is open or you're
+      typing, an "Update ready" pill waits until you're done. Nothing is
+      lost either way, because every change is saved to this device as it's
+      made and synced after the reload.
+   4. At most one automatic reload per build, so a genuinely broken deploy
+      can't put the app in a reload loop. "Repair app" (Me) is the way out. */
+const APP_BUILD = window.__TALLY_BUILD__ || 'dev';
+const buildDate = (b) => { const t = parseInt(b, 36); return b !== 'dev' && t > 1.6e12 ? new Date(t) : null; };
+const Updates = {
+  RELOAD_GUARD: 'tally_update_reload',
+  CHECK_EVERY_MS: 30 * 60_000,
+  ready: false,
+  isBusy: () => false,               /* App replaces this */
+  beforeReload: async () => {},      /* App replaces this: flush unsynced changes */
+  subs: new Set(),
+  set(v) { this.ready = v; this.subs.forEach((f) => f(v)); },
+  async reloadNow() {
+    try {
+      if (sessionStorage.getItem(this.RELOAD_GUARD) === APP_BUILD) return;
+      sessionStorage.setItem(this.RELOAD_GUARD, APP_BUILD);
+    } catch {}
+    try { await Promise.race([this.beforeReload(), new Promise((r) => setTimeout(r, 2500))]); } catch {}
+    location.reload();
+  },
+  /* Reload into the new version now, or as soon as the person is done. */
+  apply() {
+    this.set(true);
+    if (!this.isBusy()) this.reloadNow();
+  },
+  /* Re-check sw.js and compare the deployed build with ours. */
+  async check() {
+    if (!('serviceWorker' in navigator) || APP_BUILD === 'dev') return false;
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      await reg?.update().catch(() => {});
+      const r = await fetch('/version.json', { cache: 'no-store' });
+      const { build } = r.ok ? await r.json() : {};
+      const newer = !!build && build !== APP_BUILD;
+      /* Normally the new worker's controllerchange triggers this. If the
+         worker didn't change or is slow to swap, go anyway: the shell is
+         network-first, so a reload fetches the new page. */
+      if (newer) setTimeout(() => { if (!this.ready) this.apply(); }, 4000);
+      return newer;
+    } catch { return false; }
+  },
+  /* Drop the service worker and cached app shell (your data stays: it lives
+     on the server and in this device's local storage), then reload. */
+  async repair() {
+    try {
+      const regs = await navigator.serviceWorker?.getRegistrations();
+      await Promise.all((regs || []).map((r) => r.unregister()));
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith('tally-')).map((k) => caches.delete(k)));
+    } catch {}
+    try { sessionStorage.removeItem(this.RELOAD_GUARD); } catch {}
+    location.reload();
+  },
+  register() {
+    if (!('serviceWorker' in navigator)) return;
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      /* The very first install claiming the page isn't an update. */
+      if (hadController) this.apply();
+    });
+    /* updateViaCache 'none': the browser never answers sw.js from HTTP cache. */
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
+    let last = Date.now();
+    const maybe = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
+      last = Date.now();
+      this.check();
+    };
+    document.addEventListener('visibilitychange', maybe);
+    window.addEventListener('focus', maybe);
+    window.addEventListener('online', maybe);
+    setInterval(() => { last = 0; maybe(); }, this.CHECK_EVERY_MS);
+  },
+};
+/* Exposed for the end-to-end update test and for debugging from Safari. */
+window.TallyUpdates = Updates;
+Updates.register();
 
 /* ── passkeys (WebAuthn) ── */
 const b64u = {
@@ -1668,6 +1767,25 @@ function ImportSheet({ state, actions, onClose }) {
     </Sheet>);
 }
 
+function AppVersionCard() {
+  const [status, setStatus] = useState('');
+  const d = buildDate(APP_BUILD);
+  return (
+    <div className="card pad stack gap12">
+      <h2>App</h2>
+      <div className="row between"><span className="sub">Version</span>
+        <span className="num" style={{fontWeight:600}}>{d ? d.toLocaleString('en-GB', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'development'}</span></div>
+      <p className="sub">Tally updates itself. New versions install in the background and switch over the next time you’re not mid-entry.</p>
+      <div className="row gap10">
+        <button className="btn grow" onClick={async () => { setStatus('checking'); const newer = await Updates.check(); setStatus(newer ? 'updating' : 'latest'); }}>
+          {status === 'checking' ? <span className="spinner"/> : 'Check for updates'}</button>
+        <button className="btn grow" onClick={() => { if (confirm('Repair the app? This clears the cached copy of Tally and reloads it. Your data isn’t affected.')) Updates.repair(); }}>Repair app</button>
+      </div>
+      {status === 'latest' && <div className="sub">You’re on the latest version.</div>}
+      {status === 'updating' && <div className="sub">A new version is available. Updating…</div>}
+    </div>);
+}
+
 function MeView({ state, actions, account, refreshAccount, theme, setTheme, open, signOut }) {
   const p = state.profile || {};
   const units = p.units || 'kg';
@@ -1791,6 +1909,8 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         <button className="btn" onClick={signOut}>{Ic.logout} Sign out</button>
       </div>
 
+      <AppVersionCard/>
+
       <div className="card pad stack gap12">
         <h2>Appearance</h2>
         <Seg value={theme} onChange={setTheme} options={[['system','Auto'],['dark','Dark'],['light','Light']]}/>
@@ -1827,6 +1947,28 @@ function App() {
   const saveTimer = useRef(null), etag = useRef(null), dirty = useRef(false);
 
   const showToast = (msg, undo) => { setToast({ msg, undo, id: Date.now() }); };
+
+  /* Updates: busy while a sheet is open or the person is typing anywhere.
+     When a new version is waiting, it's applied the moment they're done. */
+  const [updateReady, setUpdateReady] = useState(Updates.ready);
+  const modalRef = useRef(null); modalRef.current = modal;
+  useEffect(() => {
+    window.__tallyMounted = true;
+    const typing = () => { const a = document.activeElement; return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable); };
+    Updates.isBusy = () => !!modalRef.current || typing();
+    Updates.subs.add(setUpdateReady);
+    return () => Updates.subs.delete(setUpdateReady);
+  }, []);
+  useEffect(() => {
+    if (!updateReady) return;
+    const tryNow = () => { if (!Updates.isBusy()) Updates.reloadNow(); };
+    tryNow();
+    /* Also when focus leaves a field, and when the app is backgrounded. */
+    document.addEventListener('focusout', tryNow);
+    const onHide = () => document.visibilityState === 'hidden' && tryNow();
+    document.addEventListener('visibilitychange', onHide);
+    return () => { document.removeEventListener('focusout', tryNow); document.removeEventListener('visibilitychange', onHide); };
+  }, [updateReady, modal]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toast.undo ? 5000 : 2600); return () => clearTimeout(t); }, [toast]);
 
   /* ── session boot ── */
@@ -1907,6 +2049,12 @@ function App() {
       return next;
     });
   }, [user?.id, push]);
+
+  /* Push anything not yet synced before an update reloads the page. (It's
+     already saved on the device, so this is belt and braces.) */
+  useEffect(() => {
+    Updates.beforeReload = async () => { if (dirty.current && stateRef.current) await push(stateRef.current); };
+  }, [push]);
 
   /* ── actions ── */
   const actions = useMemo(() => {
@@ -2045,6 +2193,8 @@ function App() {
       {modal?.kind === 'exercise' && <ExerciseSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} item={modal.arg} onClose={closeModal}/>}
       {modal?.kind === 'import' && <ImportSheet state={state} actions={actions} onClose={closeModal}/>}
       {recovery && <RecoverySheet code={recovery.recoveryCode} isNew={recovery.isNew} onDone={() => { setRecovery(null); loadAccount(); }}/>}
+      {updateReady && <div className="toast glass" role="status" style={{bottom:'auto',top:'calc(env(safe-area-inset-top,0px) + 12px)'}}>
+        New version ready<button onClick={() => { setModal(null); Updates.reloadNow(); }}>Refresh</button></div>}
       {toast && <div className="toast glass" role="status" key={toast.id}>{toast.msg}{toast.undo && <button onClick={() => { toast.undo(); setToast(null); }}>Undo</button>}</div>}
     </div>);
 }
@@ -2053,11 +2203,29 @@ ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
 </script>
 
 <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').catch(function(err) { console.warn('SW registration failed:', err); });
-    });
-  }
+  /* Boot watchdog — plain JS, so it still runs if the app itself can't.
+     If a bad cache or a broken deploy stops Tally from starting within 10s,
+     offer a one-tap repair instead of a blank screen. */
+  /* The clock starts once every script has downloaded, so a slow first
+     visit on mobile data is never mistaken for a broken app. */
+  window.addEventListener('load', function () { setTimeout(function () {
+    if (window.__tallyMounted) return;
+    var el = document.getElementById('app');
+    if (!el) return;
+    el.innerHTML = '<div style="min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px;font-family:-apple-system,system-ui,sans-serif;text-align:center">'
+      + '<div style="max-width:320px"><h1 style="font-size:22px;margin-bottom:8px">Tally didn’t start</h1>'
+      + '<p style="opacity:.7;margin-bottom:18px;line-height:1.4">This can happen right after an update. Repairing reloads a fresh copy. Your data is safe.</p>'
+      + '<button id="tally-repair" style="height:50px;padding:0 24px;border-radius:999px;border:0;background:#30d158;color:#000;font-weight:700;font-size:17px">Repair app</button></div></div>';
+    document.getElementById('tally-repair').onclick = function () {
+      var done = function () { try { sessionStorage.removeItem('tally_update_reload'); } catch (e) {} location.reload(); };
+      Promise.resolve()
+        .then(function () { return navigator.serviceWorker ? navigator.serviceWorker.getRegistrations() : []; })
+        .then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); })
+        .then(function () { return window.caches ? caches.keys() : []; })
+        .then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf('tally-') === 0; }).map(function (k) { return caches.delete(k); })); })
+        .then(done, done);
+    };
+  }, 10000); });
 </script>
 </body>
 </html>
