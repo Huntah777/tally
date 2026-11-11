@@ -1,0 +1,152 @@
+# Tally — deployment & setup
+
+Same shape as Command Deck and Folio: a single-file React PWA (`index.html`)
+served by Cloudflare Pages, Pages Functions under `functions/`, and one D1
+database. The only build step is `npm run build`, which copies the public
+files into `dist/`. That keeps tests, docs, `schema.sql` and the local dev
+database in `.wrangler/` out of what gets published.
+
+**It costs nothing to run.** Every piece fits inside a free tier:
+
+| Piece | Service | Free allowance |
+|---|---|---|
+| Hosting + API | Cloudflare Pages + Functions | Unlimited static requests, 100k Function calls/day |
+| Accounts + data | Cloudflare D1 | 5 GB, 5M reads/day, 100k writes/day |
+| Food database | Open Food Facts | Free and open, no key |
+| Barcode scanning | On-device (BarcodeDetector / ZXing) | No server work |
+| Receipt reading | On-device OCR (Tesseract, vendored) | No server work |
+| Passkeys | WebAuthn, verified in the Function with WebCrypto | No third-party auth |
+
+---
+
+## 1. One-time setup
+
+```bash
+npm install
+npx wrangler login
+npx wrangler d1 create tally-db
+```
+
+Copy `wrangler.toml.example` to `wrangler.toml` (it's gitignored) and paste the
+`database_id` that `d1 create` printed. Then create the tables:
+
+```bash
+npx wrangler d1 execute tally-db --remote --file=./schema.sql
+```
+
+The schema is safe to re-run. Everything is `IF NOT EXISTS`.
+
+## 2. Pages project
+
+**Direct upload (how it's deployed today):**
+
+```bash
+npm run deploy
+```
+
+This builds `dist/` and uploads it plus `functions/` to the `tally` project.
+The D1 binding comes from `wrangler.toml`.
+
+**Or connect Git** so every push deploys:
+
+*Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git* and
+pick this repo.
+
+| Setting | Value |
+|---|---|
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+
+Then **Settings → Bindings → Add → D1 database**:
+
+| Variable name | D1 database |
+|---|---|
+| `DB` | `tally-db` |
+
+Add it for Production (and Preview, if you use preview deployments), then
+redeploy once.
+
+### Optional: invite-only sign-ups
+
+By default anyone who finds the URL can create an account. To restrict that,
+add an environment variable (*Settings → Variables and Secrets*):
+
+| Name | Value |
+|---|---|
+| `SIGNUP_CODE` | any phrase you'll give to people you invite |
+
+The sign-up form then asks for the code.
+
+## 3. Accounts, passwords and passkeys
+
+- Passwords are hashed with PBKDF2-SHA256 (100k iterations, the Workers
+  maximum). Sessions are HttpOnly cookies, and only their SHA-256 is stored.
+- **There's no email reset**, because sending email would mean another service.
+  Instead every account gets a **recovery code** at sign-up, shown once. It
+  resets the password and is then replaced with a new one.
+- Wrong passwords are throttled: 8 per email or 30 per IP in 15 minutes.
+- **Passkeys** (Face ID, Touch ID, Windows Hello, Android) can be added under
+  *Me → Account*. They're tied to the domain they were created on, so after a
+  move to a custom domain people need to add them again.
+
+If someone loses both their password and recovery code, reset them from the
+CLI:
+
+```bash
+npx wrangler d1 execute tally-db --remote --command "SELECT id, email FROM users WHERE email = 'them@example.com'"
+```
+
+Deleting that user's row lets them sign up fresh, but **this loses their
+data**. Ask them for a backup first (*Me → Download backup*).
+
+## 4. Local development
+
+```bash
+npx wrangler d1 execute tally-db --local --file=./schema.sql
+npm run dev            # http://localhost:8790
+```
+
+To test invite-only sign-up locally, copy `.dev.vars.example` to `.dev.vars`.
+
+## 5. Tests
+
+```bash
+npm test
+```
+
+- **unit:** the engine (targets, trend, adaptive maintenance, every health
+  insight), the importers (MyFitnessPal ZIP, Lose It!, Cronometer, Apple
+  Health, generic CSV) and receipt parsing.
+- **api:** sign-up and login, CSRF, per-user isolation, merge and tombstones,
+  ETag, recovery codes, throttling, account deletion. Runs against
+  `wrangler pages dev` with a throwaway local D1 in `.wrangler/test-state`.
+- **chromium / iphone:** end-to-end in a browser: sign up, onboarding, logging,
+  persistence across devices, and a real passkey round-trip using Chromium's
+  virtual authenticator.
+
+## How the pieces fit
+
+| File | Role |
+|---|---|
+| `index.html` | The whole UI (React + in-browser Babel, like the siblings) |
+| `lib/engine.js` | Targets, trend weight, pace, adaptive maintenance, health insights |
+| `lib/importers.js` | MyFitnessPal / Lose It! / Cronometer / Apple Health / CSV import |
+| `lib/receipt.js` | Receipt parsing (supermarkets, Deliveroo/Uber Eats/Just Eat, restaurant bills), abbreviations, learned matches |
+| `lib/dishes.js` | Typical UK takeaway & restaurant portions (~170 dishes), offline, labelled as estimates |
+| `functions/api/auth/[action].js` | Sign up, sign in, recovery, password change, delete |
+| `functions/api/passkey/[action].js` | WebAuthn registration and sign-in |
+| `functions/api/state.js` | Per-user state, merged on every write (same design as Folio) |
+| `functions/api/food/*.js` | Open Food Facts barcode lookup and search, edge-cached |
+| `vendor/tesseract/` | On-device OCR, loaded only when a receipt is scanned |
+| `vendor/zxing.min.js` | Barcode reader for browsers without BarcodeDetector (iOS) |
+
+The `lib/*.js` files are plain scripts that work in the page and in Node, so
+the tests exercise exactly the code the app runs.
+
+## Design
+
+Tally follows iOS 26 (Liquid Glass): SF Pro and Apple's system colours,
+grouped-inset cards, capsule controls, a floating glass tab bar with a separate
++ button, and inset glass sheets. It respects Reduce Transparency and Reduce
+Motion, and has Auto, Dark and Light themes. Install it from Safari with
+*Share → Add to Home Screen* and it runs full-screen like a native app.

@@ -1,0 +1,1872 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Tally · Calorie Deficit</title>
+<link rel="icon" href="/tally-icon.svg" type="image/svg+xml"/>
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)"/>
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)"/>
+<meta name="format-detection" content="telephone=no"/>
+<script>
+  window._installPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    window._installPrompt = e;
+    window.dispatchEvent(new Event('installpromptready'));
+  });
+</script>
+
+<!-- iOS home screen -->
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Tally"/>
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"/>
+
+<script>
+  /* Apply the saved theme before first paint so there's no flash. */
+  try { var t = localStorage.getItem('tally_theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+/* ════════════════════════════════════════════════════════════════
+   Tally follows iOS 26 ("Liquid Glass"):
+   • Apple system colours and SF Pro (system-ui), so on an iPhone it reads
+     as a native app; elsewhere it falls back to the platform font.
+   • Grouped-inset surfaces with no borders, large titles, capsule
+     buttons and segmented controls.
+   • Chrome (tab bar, sheets, toasts, tooltips) is glass: a translucent,
+     blurred, specular-edged layer floating above content.
+   Dark by default, light theme, and "Auto" (no data-theme) following
+   the OS. Reduce Transparency swaps glass for solid fills.
+   ════════════════════════════════════════════════════════════════ */
+:root{
+  --bg-app:#000000; --bg-sidebar:#0b0b0c; --bg-surface:#1c1c1e; --bg-surface-2:#2c2c2e; --bg-elev:#2c2c2e; --seg-on:#636366;
+  --sep:rgba(84,84,88,.55); --border:rgba(84,84,88,.4); --border-strong:rgba(120,120,128,.5);
+  --text-primary:#ffffff; --text-secondary:rgba(235,235,245,.62); --text-muted:rgba(235,235,245,.34);
+  --accent:#30d158; --accent-strong:#28b84c; --accent-ink:#000000; --accent-soft:rgba(48,209,88,.18); --accent-ring:rgba(48,209,88,.4);
+  --tint:#0a84ff;
+  --good:#30d158; --warning:#ff9f0a; --danger:#ff453a; --info:#64d2ff;
+  --protein:#0a84ff; --carbs:#bf5af2; --fat:#ffd60a;
+  --fill:rgba(120,120,128,.24); --fill-hover:rgba(120,120,128,.3); --fill-active:rgba(120,120,128,.36); --fill-input:rgba(118,118,128,.24);
+  --glass-bg:rgba(30,30,32,.58); --glass-bg-strong:rgba(28,28,30,.84);
+  --glass-edge:rgba(255,255,255,.16); --glass-shine:rgba(255,255,255,.22);
+  --glass-blur:blur(28px) saturate(1.9);
+  --shadow-2:0 18px 50px -12px rgba(0,0,0,.65); --shadow-glass:0 10px 30px -8px rgba(0,0,0,.55);
+  --r-sm:10px; --r-md:14px; --r-lg:22px; --r-xl:34px; --r-pill:999px;
+  --ease:cubic-bezier(.32,.72,0,1); --spring:cubic-bezier(.34,1.4,.64,1); --dur:220ms;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro",system-ui,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --font-round:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg-app:#f2f2f7; --bg-sidebar:#f2f2f7; --bg-surface:#ffffff; --bg-surface-2:#f2f2f7; --bg-elev:#ffffff; --seg-on:#ffffff;
+  --sep:rgba(60,60,67,.22); --border:rgba(60,60,67,.18); --border-strong:rgba(60,60,67,.29);
+  --text-primary:#000000; --text-secondary:rgba(60,60,67,.66); --text-muted:rgba(60,60,67,.36);
+  --accent:#34c759; --accent-strong:#2fb350; --accent-ink:#ffffff; --accent-soft:rgba(52,199,89,.14); --accent-ring:rgba(52,199,89,.38);
+  --tint:#007aff;
+  --good:#248a3d; --warning:#c93400; --danger:#d70015; --info:#0071a4;
+  --protein:#007aff; --carbs:#af52de; --fat:#d4a000;
+  --fill:rgba(120,120,128,.12); --fill-hover:rgba(120,120,128,.18); --fill-active:rgba(120,120,128,.24); --fill-input:rgba(118,118,128,.12);
+  --glass-bg:rgba(255,255,255,.62); --glass-bg-strong:rgba(255,255,255,.86);
+  --glass-edge:rgba(255,255,255,.75); --glass-shine:rgba(255,255,255,.95);
+  --shadow-2:0 18px 50px -14px rgba(0,0,0,.22); --shadow-glass:0 8px 28px -8px rgba(0,0,0,.18);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme]){
+    --bg-app:#f2f2f7; --bg-sidebar:#f2f2f7; --bg-surface:#ffffff; --bg-surface-2:#f2f2f7; --bg-elev:#ffffff; --seg-on:#ffffff;
+    --sep:rgba(60,60,67,.22); --border:rgba(60,60,67,.18); --border-strong:rgba(60,60,67,.29);
+    --text-primary:#000000; --text-secondary:rgba(60,60,67,.66); --text-muted:rgba(60,60,67,.36);
+    --accent:#34c759; --accent-strong:#2fb350; --accent-ink:#ffffff; --accent-soft:rgba(52,199,89,.14); --accent-ring:rgba(52,199,89,.38);
+    --tint:#007aff;
+    --good:#248a3d; --warning:#c93400; --danger:#d70015; --info:#0071a4;
+    --protein:#007aff; --carbs:#af52de; --fat:#d4a000;
+    --fill:rgba(120,120,128,.12); --fill-hover:rgba(120,120,128,.18); --fill-active:rgba(120,120,128,.24); --fill-input:rgba(118,118,128,.12);
+    --glass-bg:rgba(255,255,255,.62); --glass-bg-strong:rgba(255,255,255,.86);
+    --glass-edge:rgba(255,255,255,.75); --glass-shine:rgba(255,255,255,.95);
+    --shadow-2:0 18px 50px -14px rgba(0,0,0,.22); --shadow-glass:0 8px 28px -8px rgba(0,0,0,.18);
+    color-scheme:light;
+  }
+}
+@media (prefers-reduced-transparency:reduce){ :root{ --glass-bg:var(--bg-elev); --glass-bg-strong:var(--bg-elev); --glass-blur:none; } }
+@media (prefers-reduced-motion:reduce){ *{animation-duration:1ms!important;transition-duration:1ms!important} }
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg-app);color:var(--text-primary);font-family:var(--font);font-size:17px;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{-webkit-user-select:none;user-select:none}
+.num{font-family:var(--font-round);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+#app{height:100%}
+
+/* glass material: tint + blur + a bright top edge (specular highlight) */
+.glass{background:var(--glass-bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);
+  box-shadow:var(--shadow-glass),inset 0 1px 0 var(--glass-shine),inset 0 0 0 .5px var(--glass-edge)}
+
+/* layout */
+.shell{display:flex;height:100%;overflow:hidden}
+.sidebar{width:240px;min-width:240px;background:var(--bg-sidebar);display:flex;flex-direction:column;padding:20px 12px;gap:2px}
+.main{flex:1;min-width:0;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch}
+.page{max-width:720px;margin:0 auto;padding:30px 24px 120px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 20px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand img{width:28px;height:28px;border-radius:7px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:var(--r-sm);font-size:15px;font-weight:600;color:var(--text-primary);cursor:pointer;border:none;background:none;text-align:left;width:100%;transition:background var(--dur) var(--ease)}
+.nav-item svg{width:20px;height:20px;color:var(--accent)}
+.nav-item:hover{background:var(--fill)}
+.nav-item.active{background:var(--accent);color:var(--accent-ink)}
+.nav-item.active svg{color:var(--accent-ink)}
+.tabbar,.tab-fab{display:none}
+
+@media (max-width:768px){
+  .sidebar{display:none}
+  .page{padding:calc(env(safe-area-inset-top,0px) + 14px) 16px calc(120px + env(safe-area-inset-bottom,0px))}
+  /* iOS 26 tab bar: a floating glass capsule, with the primary action in its
+     own glass circle beside it rather than squeezed between the tabs. */
+  .tabbar{display:flex;position:fixed;z-index:50;left:16px;right:88px;bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 4px);height:62px;padding:4px;border-radius:var(--r-pill);align-items:stretch}
+  .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;color:var(--text-primary);font-size:10.5px;font-weight:600;cursor:pointer;border-radius:var(--r-pill);transition:background var(--dur) var(--ease),color var(--dur) var(--ease),transform 160ms var(--spring)}
+  .tabbar button svg{width:24px;height:24px}
+  .tabbar button.active{color:var(--accent);background:var(--fill)}
+  .tabbar button:active{transform:scale(.92)}
+  .tab-fab{display:flex;position:fixed;z-index:50;right:16px;bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 4px);width:62px;height:62px;border-radius:50%;border:none;align-items:center;justify-content:center;cursor:pointer;color:var(--accent);transition:transform 180ms var(--spring)}
+  .tab-fab svg{width:28px;height:28px;stroke-width:2.4}
+  .tab-fab:active{transform:scale(.9)}
+}
+
+/* type, after iOS text styles */
+h1{font-size:34px;font-weight:800;letter-spacing:-.025em;line-height:1.1}
+h2{font-size:20px;font-weight:700;letter-spacing:-.015em}
+.sub{color:var(--text-secondary);font-size:15px;line-height:1.4}
+.muted{color:var(--text-muted)}
+.label{font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.02em}
+
+/* surfaces: grouped inset, no borders, like Settings and Health */
+.card{background:var(--bg-surface);border-radius:var(--r-lg);border:none}
+.pad{padding:16px}
+.stack{display:flex;flex-direction:column}
+.row{display:flex;align-items:center}
+.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap16{gap:16px}.gap20{gap:20px}
+.grow{flex:1;min-width:0}
+.between{justify-content:space-between}
+.wrap{flex-wrap:wrap}
+.divider{height:.5px;background:var(--sep);margin:2px 0}
+
+/* controls: capsules */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:50px;padding:0 22px;border-radius:var(--r-pill);border:none;background:var(--fill);color:var(--text-primary);font-weight:600;font-size:17px;cursor:pointer;transition:background var(--dur) var(--ease),transform 160ms var(--spring),opacity var(--dur);white-space:nowrap}
+.btn:hover{background:var(--fill-hover)}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.4;cursor:default;transform:none}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{background:var(--accent-strong)}
+.btn.danger{color:var(--danger)}
+.btn.ghost{background:none;color:var(--tint)}
+.btn.sm{height:34px;padding:0 14px;font-size:15px}
+.btn.block{width:100%}
+.btn svg{width:20px;height:20px}
+.icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:none;background:var(--fill);color:var(--text-primary);cursor:pointer;flex-shrink:0;transition:transform 160ms var(--spring),background var(--dur)}
+.icon-btn:active{transform:scale(.9)}
+.icon-btn svg{width:20px;height:20px}
+.icon-btn.plain{background:none;color:var(--text-muted)}
+.input,.select{width:100%;height:46px;padding:0 14px;border-radius:var(--r-md);border:none;background:var(--fill-input);outline:none;font-size:17px;transition:box-shadow var(--dur)}
+.select{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);background-position:calc(100% - 20px) 20px,calc(100% - 15px) 20px;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px}
+textarea.input{height:auto;padding:12px 14px;line-height:1.45;font-size:15px}
+.input:focus,.select:focus{box-shadow:0 0 0 3px var(--accent-ring)}
+.input::placeholder{color:var(--text-muted)}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
+.field>span{font-size:13px;font-weight:600;color:var(--text-secondary);padding-left:4px}
+.seg{display:flex;background:var(--fill);border-radius:var(--r-pill);padding:3px}
+.seg button{flex:1;height:34px;border:none;background:none;border-radius:var(--r-pill);font-weight:600;font-size:14px;color:var(--text-primary);cursor:pointer;white-space:nowrap;padding:0 8px;transition:background var(--dur) var(--ease)}
+.seg button.on{background:var(--seg-on);box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.chip{height:32px;padding:0 13px;border-radius:var(--r-pill);border:none;background:var(--fill);font-size:14px;font-weight:600;color:var(--text-primary);cursor:pointer;transition:transform 160ms var(--spring)}
+.chip:active{transform:scale(.95)}
+.chip.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.check{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0}
+
+/* quick actions, Control Center–style tiles */
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.action{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 4px 14px;border-radius:var(--r-lg);border:none;background:var(--bg-surface);cursor:pointer;font-weight:600;font-size:13px;color:var(--text-primary);transition:transform 180ms var(--spring)}
+.action:active{transform:scale(.94)}
+.action .ico{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent)}
+.action svg{width:22px;height:22px}
+
+/* list rows with inset separators, like UITableView */
+.list-row{display:flex;align-items:center;gap:12px;padding:11px 0;cursor:pointer;position:relative}
+.list-row+.list-row::before{content:"";position:absolute;top:0;left:0;right:0;height:.5px;background:var(--sep)}
+.list-row .name{font-weight:500;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-row .meta{font-size:13px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-row:active{opacity:.6}
+.thumb{width:40px;height:40px;border-radius:10px;object-fit:cover;background:var(--fill);flex-shrink:0}
+
+/* progress bars */
+.bar{height:6px;border-radius:var(--r-pill);background:var(--fill);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:var(--r-pill);transition:width 500ms var(--ease)}
+
+/* stat tiles */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:620px){.tiles{grid-template-columns:repeat(2,1fr)}.actions{gap:8px}}
+.tile{padding:14px 16px;border-radius:var(--r-lg);background:var(--bg-surface)}
+.tile .v{font-size:24px;font-weight:700;margin-top:4px;font-family:var(--font-round);letter-spacing:-.02em}
+.tile .d{font-size:13px;color:var(--text-secondary);margin-top:2px}
+
+/* insights */
+.insight{padding:16px 18px}
+.insight .tag{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--c)}
+.insight .tag svg{width:18px;height:18px}
+.insight ul{margin:10px 0 0 20px;display:flex;flex-direction:column;gap:6px;font-size:15px;color:var(--text-secondary);line-height:1.45}
+
+/* sheets: iOS 26 inset glass panel with a grabber, springing up */
+.scrim{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.32);display:flex;align-items:flex-end;justify-content:center;padding:0 8px max(env(safe-area-inset-bottom,0px),8px);animation:fade 200ms var(--ease)}
+@media (min-width:769px){.scrim{align-items:center;padding:24px}}
+.sheet{width:100%;max-width:560px;max-height:calc(100vh - env(safe-area-inset-top,0px) - 24px);max-height:calc(100dvh - env(safe-area-inset-top,0px) - 24px);display:flex;flex-direction:column;border-radius:var(--r-xl);overflow:hidden;animation:rise 420ms var(--spring);
+  background:var(--glass-bg-strong);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--shadow-2),inset 0 1px 0 var(--glass-shine),inset 0 0 0 .5px var(--glass-edge)}
+.grabber{width:36px;height:5px;border-radius:3px;background:var(--text-muted);margin:7px auto 0;flex-shrink:0}
+@media (min-width:769px){.grabber{display:none}}
+.sheet-head{display:flex;align-items:center;gap:8px;padding:10px 14px 8px}
+.sheet-head h2{flex:1;font-size:17px;font-weight:700;text-align:center}
+.sheet-head .spacer{width:38px;flex-shrink:0}
+.sheet-body{padding:6px 20px 20px;overflow-y:auto;flex:1;overscroll-behavior:contain}
+.sheet-foot{padding:12px 20px 16px;display:flex;gap:10px}
+@keyframes rise{from{transform:translateY(40px) scale(.98);opacity:0}to{transform:none;opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:20px;height:20px;border:2.5px solid var(--fill-active);border-top-color:var(--text-secondary);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+
+/* scanner */
+.viewfinder{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#000;aspect-ratio:4/3}
+.viewfinder video{width:100%;height:100%;object-fit:cover;display:block}
+.viewfinder .reticle{position:absolute;left:12%;right:12%;top:32%;bottom:32%;border:3px solid rgba(255,255,255,.95);border-radius:20px;box-shadow:0 0 0 999px rgba(0,0,0,.4)}
+.viewfinder .laser{position:absolute;left:15%;right:15%;top:50%;height:2px;border-radius:2px;background:var(--accent);box-shadow:0 0 14px var(--accent);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+/* toast: a glass capsule above the tab bar */
+.toast{position:fixed;left:50%;bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 82px);transform:translateX(-50%);z-index:200;padding:12px 18px;border-radius:var(--r-pill);font-weight:600;font-size:15px;animation:fade 240ms var(--ease);display:flex;gap:14px;align-items:center;max-width:calc(100vw - 32px);white-space:nowrap}
+.toast button{border:none;background:none;color:var(--tint);font-weight:700;cursor:pointer;font-size:15px}
+@media (min-width:769px){.toast{bottom:28px}}
+
+/* charts */
+.chart{width:100%;height:auto;display:block;touch-action:pan-y}
+.chart text{fill:var(--text-secondary);font-size:11px;font-family:var(--font)}
+.tip{position:absolute;pointer-events:none;border-radius:var(--r-md);padding:8px 12px;font-size:13px;white-space:nowrap;z-index:5;
+  background:var(--glass-bg-strong);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);box-shadow:var(--shadow-glass),inset 0 0 0 .5px var(--glass-edge)}
+
+/* auth */
+.auth{min-height:100%;display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 24px) 16px 24px}
+.auth .card{width:100%;max-width:400px;padding:28px 22px}
+.err{color:var(--danger);font-size:15px;font-weight:500}
+.code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:20px;letter-spacing:.06em;text-align:center;padding:16px;border-radius:var(--r-md);background:var(--fill);user-select:all;-webkit-user-select:all}
+details>summary{list-style:none;color:var(--tint);font-weight:500;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+a{color:var(--tint)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="/vendor/react.min.js"></script>
+<script src="/vendor/react-dom.min.js"></script>
+<script src="/vendor/babel.min.js"></script>
+<script src="/lib/engine.js"></script>
+<script src="/lib/importers.js"></script>
+<script src="/lib/receipt.js"></script>
+<script src="/lib/dishes.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useCallback, Fragment } = React;
+const E = window.TallyEngine, IMP = window.TallyImport, RC = window.TallyReceipt, DISH = window.TallyDishes;
+
+/* ── icons ── */
+const svg = (d, extra) => <svg viewBox="0 0 24 24" width="20" height="20" style={{flexShrink:0}} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...extra}>{d}</svg>;
+const Ic = {
+  today:   svg(<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>),
+  progress:svg(<><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></>),
+  insight: svg(<><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.4 1 1.1 1 1.8V16h5v-.3c0-.7.4-1.4 1-1.8A6 6 0 0 0 12 3z"/></>),
+  me:      svg(<><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>),
+  plus:    svg(<path d="M12 5v14M5 12h14"/>),
+  barcode: svg(<><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></>),
+  receipt: svg(<><path d="M5 3v18l2.5-1.5L10 21l2-1.5 2 1.5 2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5z"/><path d="M9 9h6M9 13h6"/></>),
+  search:  svg(<><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>),
+  bolt:    svg(<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>),
+  x:       svg(<path d="M18 6L6 18M6 6l12 12"/>),
+  left:    svg(<path d="M15 18l-6-6 6-6"/>),
+  right:   svg(<path d="M9 18l6-6-6-6"/>),
+  scale:   svg(<><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M8 9a5 5 0 0 1 8 0l-3 3"/></>),
+  trash:   svg(<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></>),
+  check:   svg(<path d="M20 6L9 17l-5-5"/>),
+  warn:    svg(<><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/></>),
+  alert:   svg(<><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></>),
+  info:    svg(<><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></>),
+  good:    svg(<><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></>),
+  key:     svg(<><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/></>),
+  face:    svg(<><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M9 9v1M15 9v1M12 9v4h-1M9.5 16a4 4 0 0 0 5 0"/></>),
+  upload:  svg(<><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></>),
+  download:svg(<><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></>),
+  camera:  svg(<><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></>),
+  image:   svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>),
+  logout:  svg(<><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></>),
+};
+const LEVEL = {
+  danger:{ c:'var(--danger)',  icon:Ic.alert, label:'Important' },
+  warn:  { c:'var(--warning)', icon:Ic.warn,  label:'Heads up'  },
+  info:  { c:'var(--info)',    icon:Ic.info,  label:'Good to know' },
+  good:  { c:'var(--good)',    icon:Ic.good,  label:'Nice'      },
+};
+const MEAL_LABEL = { breakfast:'Breakfast', lunch:'Lunch', dinner:'Dinner', snacks:'Snacks' };
+
+/* ── small utils ── */
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const fmtK = (n) => (n == null || !isFinite(n) ? '—' : Math.round(n).toLocaleString('en-GB'));
+const r1 = (n) => Math.round((n || 0) * 10) / 10;
+const prettyDate = (iso, { long = false } = {}) => {
+  const t = E.today();
+  if (iso === t) return 'Today';
+  if (iso === E.addDays(t, -1)) return 'Yesterday';
+  if (iso === E.addDays(t, 1)) return 'Tomorrow';
+  return E.parseIso(iso).toLocaleDateString('en-GB', long ? { weekday:'long', day:'numeric', month:'long' } : { weekday:'short', day:'numeric', month:'short' });
+};
+const shortDate = (iso) => E.parseIso(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+const mealForNow = () => { const h = new Date().getHours(); return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 21 ? 'dinner' : 'snacks'; };
+const loadScript = (() => {
+  const cache = {};
+  return (src) => cache[src] || (cache[src] = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => { delete cache[src]; rej(new Error('Couldn’t load ' + src)); };
+    document.head.appendChild(s);
+  }));
+})();
+
+/* ── API ──
+   Same-origin, cookie session. Every request carries X-Tally, which the
+   server requires on writes as its CSRF check. */
+async function api(path, { method = 'GET', body, headers = {} } = {}) {
+  let r;
+  try {
+    r = await fetch(path, {
+      method, credentials: 'same-origin', cache: 'no-store',
+      headers: { 'X-Tally': '1', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch { const e = new Error('You’re offline'); e.offline = true; throw e; }
+  if (r.status === 304) return { notModified: true, etag: r.headers.get('ETag') };
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(data.error || `Request failed (${r.status})`); e.status = r.status; e.data = data; throw e; }
+  data.__etag = r.headers.get('ETag');
+  return data;
+}
+
+/* ── passkeys (WebAuthn) ── */
+const b64u = {
+  enc: (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
+  dec: (s) => { const t = s.replace(/-/g,'+').replace(/_/g,'/'); return Uint8Array.from(atob(t + '='.repeat((4 - t.length % 4) % 4)), c => c.charCodeAt(0)); },
+};
+const passkeysSupported = () => !!(window.PublicKeyCredential && navigator.credentials?.create);
+const passkeyName = () => {
+  const ua = navigator.userAgent;
+  if (/iPhone/.test(ua)) return 'iPhone (Face ID)';
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/Android/.test(ua)) return 'Android phone';
+  if (/Mac OS X/.test(ua)) return 'Mac (Touch ID)';
+  if (/Windows/.test(ua)) return 'Windows Hello';
+  return 'Passkey';
+};
+async function registerPasskey() {
+  const { challengeId, publicKey: o } = await api('/api/passkey/register-options', { method:'POST', body:{} });
+  const cred = await navigator.credentials.create({ publicKey: {
+    ...o, challenge: b64u.dec(o.challenge), user: { ...o.user, id: b64u.dec(o.user.id) },
+    excludeCredentials: (o.excludeCredentials || []).map(c => ({ ...c, id: b64u.dec(c.id) })),
+  }});
+  const res = cred.response;
+  if (!res.getPublicKey || !res.getAuthenticatorData) throw new Error('This browser can’t set up passkeys for Tally — try Safari, Chrome or Edge.');
+  const spki = res.getPublicKey();
+  if (!spki) throw new Error('This passkey type isn’t supported.');
+  await api('/api/passkey/register', { method:'POST', body: {
+    challengeId, id: cred.id, name: passkeyName(),
+    clientDataJSON: b64u.enc(res.clientDataJSON), authenticatorData: b64u.enc(res.getAuthenticatorData()),
+    publicKey: b64u.enc(spki), alg: res.getPublicKeyAlgorithm(),
+  }});
+}
+async function signInWithPasskey() {
+  const { challengeId, publicKey: o } = await api('/api/passkey/login-options', { method:'POST', body:{} });
+  const cred = await navigator.credentials.get({ publicKey: { ...o, challenge: b64u.dec(o.challenge) } });
+  const res = cred.response;
+  return api('/api/passkey/login', { method:'POST', body: {
+    challengeId, id: cred.id,
+    clientDataJSON: b64u.enc(res.clientDataJSON), authenticatorData: b64u.enc(res.authenticatorData), signature: b64u.enc(res.signature),
+  }});
+}
+
+/* ── local cache ──
+   Per-user, so two people sharing a browser never see each other's log. */
+const LAST_USER = 'tally_user';
+const Cache = {
+  key: (uid) => `tally_v1:${uid}`,
+  read(uid) { try { return JSON.parse(localStorage.getItem(this.key(uid)) || 'null'); } catch { return null; } },
+  write(uid, s) { try { localStorage.setItem(this.key(uid), JSON.stringify(s)); } catch {} },
+  user() { try { return JSON.parse(localStorage.getItem(LAST_USER) || 'null'); } catch { return null; } },
+  setUser(u) { try { u ? localStorage.setItem(LAST_USER, JSON.stringify(u)) : localStorage.removeItem(LAST_USER); } catch {} },
+};
+const SEED = () => ({ profile: null, entries: [], entriesDeleted: [], weights: [], weightsDeleted: [], foods: [], foodsDeleted: [], aliases: {}, ui: {} });
+const hydrate = (s) => ({ ...SEED(), ...(s || {}) });
+
+const ThemePref = {
+  get() { try { return localStorage.getItem('tally_theme') || 'system'; } catch { return 'system'; } },
+  set(v) {
+    try { v === 'system' ? localStorage.removeItem('tally_theme') : localStorage.setItem('tally_theme', v); } catch {}
+    if (v === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  },
+};
+
+/* ── shared UI ── */
+function Sheet({ title, onClose, children, footer, wide }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+  return ReactDOM.createPortal(
+    <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={title} style={wide ? { maxWidth: 680 } : null}>
+        <div className="grabber" aria-hidden="true"/>
+        <div className="sheet-head"><span className="spacer"/><h2>{title}</h2><button className="icon-btn" aria-label="Close" onClick={onClose}>{Ic.x}</button></div>
+        <div className="sheet-body">{children}</div>
+        {footer && <div className="sheet-foot">{footer}</div>}
+      </div>
+    </div>, document.body);
+}
+
+function Seg({ value, options, onChange }) {
+  return <div className="seg" role="tablist">{options.map(([v, l]) =>
+    <button key={v} role="tab" aria-selected={value === v} className={value === v ? 'on' : ''} onClick={() => onChange(v)}>{l}</button>)}</div>;
+}
+
+function Field({ label, children, hint }) {
+  return <label className="field"><span>{label}</span>{children}{hint && <small className="muted" style={{fontSize:12}}>{hint}</small>}</label>;
+}
+
+/* Weight input in the user's units. Stone users type stones + pounds. */
+function WeightInput({ kg, units, onChange, autoFocus, id }) {
+  const toParts = (k) => {
+    if (k == null || k === '') return { a: '', b: '' };
+    if (units === 'st') { const lb = k * E.LB_PER_KG; const st = Math.floor(lb / 14); return { a: String(st), b: String(r1(lb - st * 14)) }; }
+    return { a: String(r1(E.kgTo(k, units))), b: '' };
+  };
+  const [p, setP] = useState(() => toParts(kg));
+  useEffect(() => { setP(toParts(kg)); }, [units]);
+  const emit = (a, b) => {
+    setP({ a, b });
+    const A = parseFloat(a), B = parseFloat(b) || 0;
+    if (units === 'st') onChange(isFinite(A) || B ? E.toKg((isFinite(A) ? A : 0) + B / 14, 'st') : null);
+    else onChange(isFinite(A) ? E.toKg(A, units) : null);
+  };
+  if (units === 'st') return (
+    <div className="row gap8">
+      <div className="row gap6 grow"><input id={id} className="input num" inputMode="numeric" placeholder="st" value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value, p.b)}/><span className="muted">st</span></div>
+      <div className="row gap6 grow"><input className="input num" inputMode="decimal" placeholder="lb" value={p.b} onChange={e => emit(p.a, e.target.value)}/><span className="muted">lb</span></div>
+    </div>);
+  return <div className="row gap8"><input id={id} className="input num" inputMode="decimal" placeholder="0.0" value={p.a} autoFocus={autoFocus} onChange={e => emit(e.target.value)}/><span className="muted">{units}</span></div>;
+}
+
+function HeightInput({ cm, units, onChange }) {
+  const imperial = units !== 'kg';
+  const [ft, setFt] = useState(() => cm ? String(Math.floor(cm / 30.48)) : '');
+  const [inch, setIn] = useState(() => cm ? String(Math.round((cm / 2.54) % 12)) : '');
+  if (!imperial) return <div className="row gap8"><input className="input num" inputMode="numeric" placeholder="170" value={cm ?? ''} onChange={e => onChange(parseFloat(e.target.value) || null)}/><span className="muted">cm</span></div>;
+  const emit = (f, i) => { setFt(f); setIn(i); const F = parseFloat(f) || 0, I = parseFloat(i) || 0; onChange(F || I ? Math.round((F * 12 + I) * 2.54) : null); };
+  return (
+    <div className="row gap8">
+      <div className="row gap6 grow"><input className="input num" inputMode="numeric" placeholder="5" value={ft} onChange={e => emit(e.target.value, inch)}/><span className="muted">ft</span></div>
+      <div className="row gap6 grow"><input className="input num" inputMode="numeric" placeholder="9" value={inch} onChange={e => emit(ft, e.target.value)}/><span className="muted">in</span></div>
+    </div>);
+}
+
+function MacroBar({ label, value, target, color }) {
+  const pct = target ? Math.min(100, (value / target) * 100) : 0;
+  return (
+    <div className="stack gap6 grow">
+      <span style={{fontWeight:600,fontSize:13}}><span style={{display:'inline-block',width:8,height:8,borderRadius:4,background:color,marginRight:6}}/>{label}</span>
+      <div className="bar"><i style={{width:pct+'%',background:color}}/></div>
+      <span className="num" style={{fontSize:13,color:'var(--text-secondary)'}}>{Math.round(value)} / {Math.round(target)} g</span>
+    </div>);
+}
+
+/* Remaining-calories ring. One headline number; eaten and target sit beside
+   it as plain text so the ring is never the only carrier of the value. */
+function Ring({ eaten, target }) {
+  const R = 64, C = 2 * Math.PI * R;
+  const over = eaten > target;
+  const frac = target ? Math.min(1, eaten / target) : 0;
+  const left = target - eaten;
+  return (
+    <div className="row gap20" style={{alignItems:'center'}}>
+      <div style={{position:'relative',width:156,height:156,flexShrink:0}}>
+        <svg viewBox="0 0 156 156" width="156" height="156" aria-hidden="true">
+          <circle cx="78" cy="78" r={R} fill="none" stroke="var(--fill-active)" strokeWidth="12"/>
+          <circle cx="78" cy="78" r={R} fill="none" stroke={over ? 'var(--warning)' : 'var(--accent)'} strokeWidth="12" strokeLinecap="round"
+            strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 78 78)" style={{transition:'stroke-dashoffset 500ms var(--ease)'}}/>
+        </svg>
+        <div className="stack" style={{position:'absolute',inset:0,alignItems:'center',justifyContent:'center'}}>
+          <div className="num" style={{fontSize:30,fontWeight:700,letterSpacing:'-.03em',color: over ? 'var(--warning)' : 'var(--text-primary)'}}>{fmtK(Math.abs(left))}</div>
+          <div className="muted" style={{fontSize:12,fontWeight:700}}>{over ? 'kcal over' : 'kcal left'}</div>
+        </div>
+      </div>
+      <div className="stack gap12 grow">
+        <div><div className="label">Eaten</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(eaten)}</div></div>
+        <div><div className="label">Target</div><div className="num" style={{fontSize:20,fontWeight:700}}>{fmtK(target)}</div></div>
+      </div>
+    </div>);
+}
+
+/* ── charts ── */
+function useWidth(ref) {
+  const [w, setW] = useState(600);
+  useEffect(() => {
+    if (!ref.current) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(280, e.contentRect.width)));
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return w;
+}
+
+function WeightChart({ weights, units, goalKg, rangeDays, rate }) {
+  const ref = useRef(null);
+  const W = useWidth(ref), H = 240, P = { l: 44, r: 12, t: 24, b: 26 };
+  const [hover, setHover] = useState(null);
+  const series = useMemo(() => {
+    const all = E.trendSeries(weights);
+    if (!rangeDays) return all;
+    const from = E.addDays(E.today(), -rangeDays);
+    return all.filter(d => d.date >= from);
+  }, [weights, rangeDays]);
+  if (series.length < 2) return <div ref={ref} className="sub" style={{padding:'30px 0',textAlign:'center'}}>Log a couple of weigh-ins to see your timeline.</div>;
+
+  const first = series[0].date, last = series[series.length - 1].date;
+  /* Project the trend forward a little when losing, so "where am I heading"
+     is visible without a separate chart. */
+  const proj = [];
+  if (rate && rate.kgPerDay < 0 && goalKg) {
+    const t0 = series[series.length - 1].trend;
+    const days = Math.min(Math.max(14, Math.round(E.daysBetween(first, last) * 0.25)), Math.ceil((t0 - goalKg) / -rate.kgPerDay));
+    for (let i = 0; i <= days; i += Math.max(1, Math.floor(days / 20))) proj.push({ date: E.addDays(last, i), v: Math.max(goalKg, t0 + rate.kgPerDay * i) });
+  }
+  const endDate = proj.length ? proj[proj.length - 1].date : last;
+  const span = Math.max(1, E.daysBetween(first, endDate));
+  const vals = series.flatMap(d => [d.kg, d.trend]).filter(v => v != null).concat(proj.map(p => p.v));
+  const showGoal = goalKg && goalKg >= Math.min(...vals) - 3;
+  if (showGoal) vals.push(goalKg);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const padKg = Math.max(0.5, (hi - lo) * 0.1); lo -= padKg; hi += padKg;
+  const x = (d) => P.l + (E.daysBetween(first, d) / span) * (W - P.l - P.r);
+  const y = (kg) => P.t + (1 - (kg - lo) / (hi - lo)) * (H - P.t - P.b);
+  const disp = (kg) => units === 'st' ? E.kgTo(kg, 'lb') : E.kgTo(kg, units);
+  const ticks = 4;
+  const yTicks = Array.from({ length: ticks }, (_, i) => lo + ((hi - lo) * (i + 0.5)) / ticks);
+  const xTicks = [first, E.addDays(first, Math.round(span / 2)), endDate];
+  const trendPath = series.map((d, i) => `${i ? 'L' : 'M'}${x(d.date).toFixed(1)},${y(d.trend).toFixed(1)}`).join('');
+  const projPath = proj.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
+
+  const onMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * W;
+    const day = Math.round(((px - P.l) / (W - P.l - P.r)) * span);
+    const d = series[Math.max(0, Math.min(series.length - 1, day))];
+    setHover(d);
+  };
+  return (
+    <div ref={ref} style={{position:'relative'}}>
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img"
+        aria-label={`Weight from ${shortDate(first)} to ${shortDate(last)}: trend ${E.fmtWeight(series[series.length-1].trend, units)}`}>
+        {yTicks.map((v, i) => <g key={i}>
+          <line x1={P.l} x2={W - P.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeWidth="1"/>
+          <text x={P.l - 8} y={y(v) + 4} textAnchor="end">{disp(v).toFixed(units === 'kg' ? 1 : 0)}</text>
+        </g>)}
+        <text x={P.l - 8} y={P.t - 2} textAnchor="end" style={{fontWeight:600}}>{units === 'st' ? 'lb' : units}</text>
+        {xTicks.map((d, i) => <text key={i} x={x(d)} y={H - 6} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}>{shortDate(d)}</text>)}
+        {showGoal && <g>
+          <line x1={P.l} x2={W - P.r} y1={y(goalKg)} y2={y(goalKg)} stroke="var(--good)" strokeWidth="1.5" strokeDasharray="5 5" opacity=".7"/>
+          <text x={W - P.r} y={y(goalKg) - 6} textAnchor="end" style={{fill:'var(--good)',fontWeight:700}}>Goal</text>
+        </g>}
+        {series.filter(d => d.kg != null).map(d => <circle key={d.date} cx={x(d.date)} cy={y(d.kg)} r="3.5" fill="var(--text-muted)" opacity=".55"/>)}
+        <path d={trendPath} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+        {projPath && <path d={projPath} fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="2 5" strokeLinecap="round" opacity=".8"/>}
+        {hover && <g>
+          <line x1={x(hover.date)} x2={x(hover.date)} y1={P.t} y2={H - P.b} stroke="var(--border-strong)"/>
+          <circle cx={x(hover.date)} cy={y(hover.trend)} r="5" fill="var(--accent)" stroke="var(--bg-surface)" strokeWidth="2"/>
+        </g>}
+      </svg>
+      {hover && <div className="tip" style={{left: Math.min(Math.max(0, (x(hover.date) / W) * 100), 70) + '%', top: 0}}>
+        <div style={{fontWeight:700}}>{prettyDate(hover.date)}</div>
+        <div className="muted">Trend <b className="num" style={{color:'var(--text-primary)'}}>{E.fmtWeight(hover.trend, units)}</b></div>
+        {hover.kg != null && <div className="muted">Scale <b className="num" style={{color:'var(--text-primary)'}}>{E.fmtWeight(hover.kg, units)}</b></div>}
+      </div>}
+      <div className="row gap16 wrap" style={{fontSize:12,marginTop:6,color:'var(--text-secondary)'}}>
+        <span className="row gap6"><svg width="10" height="10"><circle cx="5" cy="5" r="3.5" fill="var(--text-muted)" opacity=".55"/></svg>Scale reading</span>
+        <span className="row gap6"><svg width="18" height="6"><path d="M0 3h18" stroke="var(--accent)" strokeWidth="2.5"/></svg>Trend</span>
+        {projPath && <span className="row gap6"><svg width="18" height="6"><path d="M0 3h18" stroke="var(--accent)" strokeWidth="2" strokeDasharray="2 4"/></svg>Projection</span>}
+        {showGoal && <span className="row gap6"><svg width="18" height="6"><path d="M0 3h18" stroke="var(--good)" strokeWidth="1.5" strokeDasharray="4 3"/></svg>Goal</span>}
+      </div>
+    </div>);
+}
+
+function CalorieChart({ entries, target, days = 14 }) {
+  const ref = useRef(null);
+  const W = useWidth(ref), H = 170, P = { l: 40, r: 8, t: 12, b: 24 };
+  const [hover, setHover] = useState(null);
+  const by = useMemo(() => E.intakeByDay(entries), [entries]);
+  const t = E.today();
+  const data = Array.from({ length: days }, (_, i) => { const d = E.addDays(t, i - days + 1); return { date: d, kcal: by.get(d)?.kcal || 0 }; });
+  const hi = Math.max(target * 1.25, ...data.map(d => d.kcal)) || 2500;
+  const slot = (W - P.l - P.r) / days, bw = Math.max(6, Math.min(26, slot - 6));
+  const y = (v) => P.t + (1 - v / hi) * (H - P.t - P.b);
+  return (
+    <div ref={ref} style={{position:'relative'}}>
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} onPointerLeave={() => setHover(null)} role="img" aria-label={`Calories for the last ${days} days against a ${fmtK(target)} kcal target`}>
+        {[0, 0.5, 1].map(f => <g key={f}><line x1={P.l} x2={W-P.r} y1={y(hi*f)} y2={y(hi*f)} stroke="var(--border)"/><text x={P.l-6} y={y(hi*f)+4} textAnchor="end">{f ? fmtK(hi*f) : 0}</text></g>)}
+        {data.map((d, i) => {
+          const cx = P.l + slot * i + slot / 2;
+          const over = d.kcal > target;
+          const h = Math.max(d.kcal ? 3 : 0, H - P.b - y(d.kcal));
+          return <g key={d.date} onPointerEnter={() => setHover({ ...d, cx })}>
+            <rect x={cx - slot / 2} y={P.t} width={slot} height={H - P.t - P.b} fill="transparent"/>
+            {d.kcal > 0 && <path d={`M${cx-bw/2},${H-P.b} v${-(h-4)} q0,-4 4,-4 h${bw-8} q4,0 4,4 v${h-4} z`} fill={over ? 'var(--warning)' : 'var(--accent)'} opacity={hover && hover.date !== d.date ? .45 : .9}/>}
+            {(i === 0 || i === days - 1 || i === Math.floor(days / 2)) && <text x={cx} y={H - 6} textAnchor="middle">{i === days - 1 ? 'Today' : shortDate(d.date)}</text>}
+          </g>;
+        })}
+        <line x1={P.l} x2={W - P.r} y1={y(target)} y2={y(target)} stroke="var(--text-secondary)" strokeWidth="1.5" strokeDasharray="5 4"/>
+      </svg>
+      {hover && <div className="tip" style={{left: Math.min(Math.max(0, (hover.cx / W) * 100 - 10), 70) + '%', top: 0}}>
+        <div style={{fontWeight:700}}>{prettyDate(hover.date)}</div>
+        <div className="muted"><b className="num" style={{color:'var(--text-primary)'}}>{fmtK(hover.kcal)}</b> kcal {hover.kcal ? (hover.kcal > target ? `· ${fmtK(hover.kcal - target)} over` : `· ${fmtK(target - hover.kcal)} under`) : '· nothing logged'}</div>
+      </div>}
+      <div className="row gap16 wrap" style={{fontSize:12,marginTop:6,color:'var(--text-secondary)'}}>
+        <span className="row gap6"><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--accent)"/></svg>At or under target</span>
+        <span className="row gap6"><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--warning)"/></svg>Over target</span>
+        <span className="row gap6"><svg width="18" height="6"><path d="M0 3h18" stroke="var(--text-secondary)" strokeWidth="1.5" strokeDasharray="4 3"/></svg>Target</span>
+      </div>
+    </div>);
+}
+
+/* ── auth screen ── */
+function AuthScreen({ onSignedIn }) {
+  const [mode, setMode] = useState('signin'); /* signin | signup | recover */
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [invite, setInvite] = useState('');
+  const [needInvite, setNeedInvite] = useState(false);
+  const [code, setCode] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn) => {
+    setErr(''); setBusy(true);
+    try { await fn(); } catch (e) {
+      if (e.data?.field === 'invite') setNeedInvite(true);
+      if (e.name === 'NotAllowedError' || e.name === 'AbortError') setErr('Passkey sign-in was cancelled.');
+      else setErr(e.message || 'Something went wrong');
+    } finally { setBusy(false); }
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    if (mode === 'signin') run(async () => { const r = await api('/api/auth/login', { method:'POST', body:{ email, password } }); onSignedIn(r.user); });
+    if (mode === 'signup') run(async () => { const r = await api('/api/auth/signup', { method:'POST', body:{ email, password, invite } }); onSignedIn(r.user, { recoveryCode: r.recoveryCode, isNew: true }); });
+    if (mode === 'recover') run(async () => { const r = await api('/api/auth/recover', { method:'POST', body:{ email, code, password } }); onSignedIn(r.user, { recoveryCode: r.recoveryCode }); });
+  };
+  const passkey = () => run(async () => { const r = await signInWithPasskey(); onSignedIn(r.user); });
+
+  return (
+    <div className="auth">
+      <div className="card stack gap16">
+        <div className="row gap10"><img src="/tally-icon.svg" alt="" width="34" height="34" style={{borderRadius:9}}/><div><h1 style={{fontSize:22}}>Tally</h1><div className="sub">Calorie deficit, made simple</div></div></div>
+        {mode !== 'recover' && <Seg value={mode} onChange={(m) => { setMode(m); setErr(''); }} options={[['signin','Sign in'],['signup','Create account']]}/>}
+        {mode === 'signin' && passkeysSupported() && <>
+          <button className="btn block" onClick={passkey} disabled={busy}>{Ic.face} Sign in with passkey</button>
+          <div className="row gap10 muted" style={{fontSize:12}}><div className="divider grow"/>or use email<div className="divider grow"/></div>
+        </>}
+        <form className="stack gap12" onSubmit={submit}>
+          <Field label="Email"><input className="input" type="email" autoComplete={mode === 'signup' ? 'email' : 'username'} required value={email} onChange={e => setEmail(e.target.value)}/></Field>
+          {mode === 'recover' && <Field label="Recovery code" hint="The code you saved when you created your account."><input className="input num" autoComplete="off" required value={code} onChange={e => setCode(e.target.value)} placeholder="XXXX-XXXX-XXXX-XXXX"/></Field>}
+          <Field label={mode === 'recover' ? 'New password' : 'Password'} hint={mode !== 'signin' ? 'At least 8 characters.' : null}>
+            <input className="input" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required minLength={mode === 'signin' ? 1 : 8} value={password} onChange={e => setPassword(e.target.value)}/>
+          </Field>
+          {mode === 'signup' && needInvite && <Field label="Invite code"><input className="input" value={invite} onChange={e => setInvite(e.target.value)} required/></Field>}
+          {err && <div className="err" role="alert">{err}</div>}
+          <button className="btn primary block" disabled={busy}>{busy ? <span className="spinner"/> : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Reset password'}</button>
+        </form>
+        {mode === 'signin' && <button className="btn ghost sm" onClick={() => { setMode('recover'); setErr(''); }}>Forgot password?</button>}
+        {mode === 'recover' && <button className="btn ghost sm" onClick={() => { setMode('signin'); setErr(''); }}>Back to sign in</button>}
+      </div>
+    </div>);
+}
+
+/* Shown once after signup / recovery. Without email infrastructure this code
+   is the only way back in after a forgotten password, so it's worth a pause. */
+function RecoverySheet({ code, isNew, onDone }) {
+  const [copied, setCopied] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [msg, setMsg] = useState('');
+  const addPasskey = async () => {
+    setAdding(true); setMsg('');
+    try { await registerPasskey(); setMsg('Passkey added — next time just tap “Sign in with passkey”.'); }
+    catch (e) { setMsg(e.name === 'NotAllowedError' ? 'Cancelled.' : e.message); }
+    finally { setAdding(false); }
+  };
+  return (
+    <Sheet title={isNew ? 'Welcome to Tally' : 'Your new recovery code'} onClose={onDone}
+      footer={<button className="btn primary block" onClick={onDone}>I’ve saved it</button>}>
+      <div className="stack gap16">
+        <p className="sub">Keep this recovery code somewhere safe, like a password manager or a note. It’s the only way to reset your password, and it won’t be shown again.</p>
+        <div className="code">{code}</div>
+        <button className="btn sm" onClick={() => { navigator.clipboard?.writeText(code); setCopied(true); }}>{copied ? 'Copied' : 'Copy code'}</button>
+        {passkeysSupported() && <div className="card pad stack gap10" style={{background:'var(--bg-surface-2)'}}>
+          <div className="row gap10">{Ic.face}<h2>Sign in with Face ID next time</h2></div>
+          <p className="sub">Add a passkey and you can sign in with Face ID, Touch ID or Windows Hello. No password needed.</p>
+          <button className="btn" onClick={addPasskey} disabled={adding}>{adding ? <span className="spinner"/> : 'Add passkey'}</button>
+          {msg && <div className="sub">{msg}</div>}
+        </div>}
+      </div>
+    </Sheet>);
+}
+
+/* ── onboarding ── */
+function Onboarding({ state, onDone }) {
+  const [step, setStep] = useState(0);
+  const [p, setP] = useState(() => ({ units: 'kg', sex: 'female', activity: 'light', paceKg: 0.5, birthYear: '', heightCm: null, startKg: null, goalKg: null, ...(state.profile || {}) }));
+  const set = (k, v) => setP(o => ({ ...o, [k]: v }));
+  const draft = { ...state, profile: { ...p, birthYear: Number(p.birthYear) || null }, weights: p.startKg ? [{ id: 'w:' + E.today(), date: E.today(), kg: p.startKg }] : [] };
+  const t = E.targets(draft);
+  const range = E.healthyRangeKg(p.heightCm);
+  const steps = [
+    { title: 'About you', ok: p.heightCm > 100 && Number(p.birthYear) > 1900 && Number(p.birthYear) < new Date().getFullYear() - 12, body: <>
+      <Field label="Units"><Seg value={p.units} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
+      <Field label="Sex" hint="Used in the calorie formula. Pick whichever is closest to your physiology."><Seg value={p.sex} onChange={v => set('sex', v)} options={[['female','Female'],['male','Male'],['other','Other']]}/></Field>
+      <Field label="Year of birth"><input className="input num" inputMode="numeric" placeholder="1990" value={p.birthYear || ''} onChange={e => set('birthYear', e.target.value.replace(/\D/g,'').slice(0,4))}/></Field>
+      <Field label="Height"><HeightInput cm={p.heightCm} units={p.units} onChange={v => set('heightCm', v)}/></Field>
+    </> },
+    { title: 'Your weight', ok: p.startKg > 30 && p.goalKg > 30, body: <>
+      <Field label="Current weight"><WeightInput kg={p.startKg} units={p.units} onChange={v => set('startKg', v)}/></Field>
+      <Field label="Goal weight" hint={range ? `A healthy range for your height is about ${E.fmtWeight(range.min, p.units)} – ${E.fmtWeight(range.max, p.units)}.` : null}>
+        <WeightInput kg={p.goalKg} units={p.units} onChange={v => set('goalKg', v)}/>
+      </Field>
+      {range && p.goalKg && p.goalKg < range.min && <div className="err">That goal is below a healthy weight for your height. Tally will warn you about this.</div>}
+    </> },
+    { title: 'How active are you?', ok: true, body: <div className="stack gap8">
+      {Object.entries(E.ACTIVITY).map(([k, a]) =>
+        <button key={k} className={'card pad row between' } style={{textAlign:'left',cursor:'pointer',borderColor: p.activity === k ? 'var(--accent)' : undefined, background: p.activity === k ? 'var(--accent-soft)' : undefined}} onClick={() => set('activity', k)}>
+          <div><div style={{fontWeight:700}}>{a.label}</div><div className="sub">{a.hint}</div></div>{p.activity === k && Ic.check}
+        </button>)}
+    </div> },
+    { title: 'Choose your pace', ok: true, body: <>
+      <div className="stack gap8">
+        {E.PACES.map(pc => {
+          const pct = p.startKg ? (pc.kg / p.startKg) * 100 : 0;
+          return <button key={pc.id} className="card pad row between" style={{textAlign:'left',cursor:'pointer',borderColor: p.paceKg === pc.kg ? 'var(--accent)' : undefined, background: p.paceKg === pc.kg ? 'var(--accent-soft)' : undefined}} onClick={() => set('paceKg', pc.kg)}>
+            <div><div style={{fontWeight:700}}>{pc.label} · {E.fmtWeight(pc.kg, p.units)}/week</div>
+              <div className="sub">{pct > 1 ? 'Faster than the ~1% a week usually recommended' : pc.id === 'steady' ? 'Recommended for most people' : pc.id === 'gentle' ? 'Easiest to stick with' : 'Quicker, needs discipline'}</div></div>
+            {p.paceKg === pc.kg && Ic.check}
+          </button>;
+        })}
+      </div>
+      <div className="card pad stack gap6" style={{background:'var(--bg-surface-2)'}}>
+        <div className="label">Your daily target</div>
+        <div className="num" style={{fontSize:30,fontWeight:700}}>{fmtK(t.kcal)} <span className="sub">kcal</span></div>
+        <div className="sub">Maintenance ≈ {fmtK(t.tdee)} kcal · deficit {fmtK(t.deficit)} kcal/day</div>
+        {t.floorApplied && <div className="sub" style={{color:'var(--warning)'}}>Held at {t.floor} kcal, the safe minimum. You’ll lose about {E.fmtWeight(Math.max(0,t.plannedPaceKg), p.units)} a week.</div>}
+        {(() => { const pr = E.projection(p.startKg, p.goalKg, t.plannedPaceKg); return pr ? <div className="sub">Goal reached around <b>{E.parseIso(pr.date).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</b>.</div> : null; })()}
+      </div>
+    </> },
+  ];
+  const s = steps[step];
+  const finish = () => onDone({ ...p, birthYear: Number(p.birthYear), done: true, startDate: E.today(), updated: Date.now() });
+  return (
+    <div className="page" style={{maxWidth:520}}>
+      <div className="stack gap20">
+        <div className="row gap6">{steps.map((_, i) => <div key={i} className="grow bar" style={{height:5}}><i style={{width: i <= step ? '100%' : '0%', background:'var(--accent)'}}/></div>)}</div>
+        <div><div className="label">Step {step + 1} of {steps.length}</div><h1>{s.title}</h1></div>
+        <div className="stack gap16">{s.body}</div>
+        <div className="row gap10">
+          {step > 0 && <button className="btn" onClick={() => setStep(step - 1)}>Back</button>}
+          <button className="btn primary grow" disabled={!s.ok} onClick={() => step < steps.length - 1 ? setStep(step + 1) : finish()}>{step < steps.length - 1 ? 'Continue' : 'Start tracking'}</button>
+        </div>
+      </div>
+    </div>);
+}
+
+/* ── barcode scanner ──
+   Native BarcodeDetector where the browser has it (Chrome/Android), ZXing
+   (vendored, loaded on demand) everywhere else — notably iOS Safari. */
+function BarcodeScanner({ onCode }) {
+  const video = useRef(null);
+  const [err, setErr] = useState('');
+  const [manual, setManual] = useState('');
+  const done = useRef(false);
+  useEffect(() => {
+    let stream, raf, reader, cancelled = false;
+    const hit = (code) => { if (done.current || !code) return; done.current = true; navigator.vibrate?.(40); onCode(String(code)); };
+    (async () => {
+      try {
+        const formats = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
+        const native = 'BarcodeDetector' in window && (await window.BarcodeDetector.getSupportedFormats?.() || []).includes('ean_13');
+        if (native) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+          if (cancelled) return;
+          video.current.srcObject = stream; await video.current.play();
+          const det = new window.BarcodeDetector({ formats });
+          const tick = async () => {
+            if (cancelled || done.current) return;
+            try { const r = await det.detect(video.current); if (r[0]) return hit(r[0].rawValue); } catch {}
+            raf = setTimeout(tick, 180);
+          };
+          tick();
+        } else {
+          await loadScript('/vendor/zxing.min.js');
+          if (cancelled) return;
+          const Z = window.ZXing;
+          const hints = new Map([[Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]], [Z.DecodeHintType.TRY_HARDER, true]]);
+          reader = new Z.BrowserMultiFormatReader(hints, 250);
+          await reader.decodeFromConstraints({ video: { facingMode: { ideal: 'environment' } }, audio: false }, video.current, (res) => res && hit(res.getText()));
+        }
+      } catch (e) {
+        setErr(e.name === 'NotAllowedError' ? 'Camera access was blocked. Allow it in your browser settings, or type the barcode below.' : 'Couldn’t start the camera. Type the barcode below instead.');
+      }
+    })();
+    return () => { cancelled = true; clearTimeout(raf); try { reader?.reset(); } catch {} stream?.getTracks().forEach(t => t.stop()); };
+  }, []);
+  return (
+    <div className="stack gap12">
+      <div className="viewfinder"><video ref={video} playsInline muted/><div className="reticle"/><div className="laser"/></div>
+      {err ? <div className="err">{err}</div> : <div className="sub" style={{textAlign:'center'}}>Line the barcode up inside the box</div>}
+      <form className="row gap8" onSubmit={(e) => { e.preventDefault(); manual.replace(/\D/g,'').length >= 8 && onCode(manual.replace(/\D/g,'')); }}>
+        <input className="input num" inputMode="numeric" placeholder="Or type the barcode number" value={manual} onChange={e => setManual(e.target.value)}/>
+        <button className="btn">Look up</button>
+      </form>
+    </div>);
+}
+
+/* ── portion picker ── */
+function PortionPicker({ food, initialGrams, meal, setMeal, onAdd, addLabel = 'Add' }) {
+  const unit = food.unit || 'g';
+  const hasServing = !!food.serving?.g;
+  const [mode, setMode] = useState(hasServing && !initialGrams ? 'serving' : 'grams');
+  const [servings, setServings] = useState('1');
+  const [grams, setGrams] = useState(String(initialGrams || food.serving?.g || 100));
+  const g = mode === 'serving' ? (parseFloat(servings) || 0) * food.serving.g : parseFloat(grams) || 0;
+  const m = E.portion(food, g);
+  return (
+    <div className="stack gap16">
+      <div className="row gap12">
+        {food.image ? <img className="thumb" src={food.image} alt="" style={{width:52,height:52}}/> : <div className="thumb row" style={{width:52,height:52,justifyContent:'center',color:'var(--accent)'}}>{Ic.bolt}</div>}
+        <div className="grow"><div style={{fontWeight:700,fontSize:16}}>{food.name}</div><div className="sub">{[food.brand, `${food.per100.kcal} kcal per 100${unit}`].filter(Boolean).join(' · ')}</div></div>
+      </div>
+      {food.estimate && <div className="sub" style={{fontSize:13}}>Typical UK portion. Restaurants vary, so adjust if yours was bigger or smaller.</div>}
+      {hasServing && <Seg value={mode} onChange={setMode} options={[['serving', `Servings (${food.serving.label || food.serving.g + unit})`], ['grams', unit === 'ml' ? 'Millilitres' : 'Grams']]}/>}
+      {mode === 'serving'
+        ? <div className="row gap8">{['0.5','1','2'].map(v => <button key={v} className={'chip' + (servings === v ? ' on' : '')} onClick={() => setServings(v)}>{v === '0.5' ? '½' : v}</button>)}
+            <input className="input num grow" inputMode="decimal" value={servings} onChange={e => setServings(e.target.value)} aria-label="Servings"/></div>
+        : <div className="row gap8"><input className="input num grow" inputMode="decimal" value={grams} onChange={e => setGrams(e.target.value)} aria-label={unit}/><span className="muted">{unit}</span></div>}
+      <div className="card pad row between" style={{background:'var(--bg-surface-2)'}}>
+        <div><div className="num" style={{fontSize:26,fontWeight:700}}>{fmtK(m.kcal)}</div><div className="label">kcal</div></div>
+        <div className="row gap16 num" style={{fontSize:13}}>
+          <span><b style={{color:'var(--protein)'}}>P</b> {m.protein}g</span><span><b style={{color:'var(--carbs)'}}>C</b> {m.carbs}g</span><span><b style={{color:'var(--fat)'}}>F</b> {m.fat}g</span>
+        </div>
+      </div>
+      {setMeal && <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>}
+      <button className="btn primary block" disabled={!g} onClick={() => onAdd(g, m)}>{addLabel} · {fmtK(m.kcal)} kcal</button>
+    </div>);
+}
+
+/* Create a food from the nutrition label (unknown barcodes, home recipes). */
+function CustomFoodForm({ barcode, initialName = '', onSave }) {
+  const [f, setF] = useState({ name: initialName, brand: '', kcal: '', protein: '', carbs: '', fat: '', serving: '', unit: 'g' });
+  const set = (k) => (e) => setF(o => ({ ...o, [k]: e.target.value }));
+  const ok = f.name.trim() && parseFloat(f.kcal) >= 0;
+  return (
+    <div className="stack gap12">
+      <p className="sub">Copy the “per 100{f.unit}” column from the label. Tally remembers it{barcode ? ' for this barcode' : ''} next time.</p>
+      <Field label="Name"><input className="input" value={f.name} onChange={set('name')} placeholder="e.g. Protein yoghurt"/></Field>
+      <div className="row gap8">
+        <Field label="Brand (optional)"><input className="input" value={f.brand} onChange={set('brand')}/></Field>
+        <Field label="Per"><Seg value={f.unit} onChange={v => setF(o => ({...o, unit: v}))} options={[['g','100g'],['ml','100ml']]}/></Field>
+      </div>
+      <div className="row gap8">
+        <Field label="kcal"><input className="input num" inputMode="decimal" value={f.kcal} onChange={set('kcal')}/></Field>
+        <Field label="Protein g"><input className="input num" inputMode="decimal" value={f.protein} onChange={set('protein')}/></Field>
+        <Field label="Carbs g"><input className="input num" inputMode="decimal" value={f.carbs} onChange={set('carbs')}/></Field>
+        <Field label="Fat g"><input className="input num" inputMode="decimal" value={f.fat} onChange={set('fat')}/></Field>
+      </div>
+      <Field label={`Serving size in ${f.unit} (optional)`}><input className="input num" inputMode="decimal" value={f.serving} onChange={set('serving')}/></Field>
+      <button className="btn primary" disabled={!ok} onClick={() => onSave({
+        id: barcode ? 'off:' + barcode : 'custom:' + uid(), barcode: barcode || '', name: f.name.trim(), brand: f.brand.trim(), unit: f.unit,
+        per100: { kcal: Math.round(parseFloat(f.kcal) || 0), protein: r1(parseFloat(f.protein)), carbs: r1(parseFloat(f.carbs)), fat: r1(parseFloat(f.fat)) },
+        serving: parseFloat(f.serving) ? { g: parseFloat(f.serving), label: `${parseFloat(f.serving)}${f.unit}` } : null, source: 'custom',
+      })}>Save food</button>
+    </div>);
+}
+
+/* ── receipt scanning (on-device OCR, no paid services) ── */
+async function ocrImage(file, onProgress) {
+  await loadScript('/vendor/tesseract/tesseract.min.js');
+  /* Pre-process: scale to ~1600px wide, greyscale and stretch contrast.
+     Thermal receipts are faint and low-contrast; this alone markedly
+     improves Tesseract's read. Dark-mode screenshots (Deliveroo, Uber Eats
+     and Just Eat all have one) are inverted first, since Tesseract expects
+     dark text on a light page. */
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / bmp.width) * (bmp.width < 900 ? 1.6 : 1);
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data;
+  const lum = (i) => d[i] * .299 + d[i+1] * .587 + d[i+2] * .114;
+  let min = 255, max = 0, sum = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) { const v = lum(i); if (v < min) min = v; if (v > max) max = v; sum += v; n++; }
+  const invert = sum / n < 110;
+  const span = Math.max(1, max - min);
+  for (let i = 0; i < d.length; i += 4) {
+    let v = (lum(i) - min) / span * 255;
+    if (invert) v = 255 - v;
+    v = v < 128 ? v * 0.7 : 255 - (255 - v) * 0.7;
+    d[i] = d[i+1] = d[i+2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+  const worker = await window.Tesseract.createWorker('eng', 1, {
+    workerPath: '/vendor/tesseract/worker.min.js', corePath: '/vendor/tesseract/', langPath: '/vendor/tesseract/lang',
+    logger: (m) => m.status === 'recognizing text' && onProgress?.(m.progress),
+  });
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    const { data } = await worker.recognize(c);
+    return data.text || '';
+  } finally { worker.terminate(); }
+}
+
+/* "How much of it did you have?" — for shared takeaways and split bills. */
+const SHARES = [[1, 'All'], [0.5, '½'], [1 / 3, '⅓'], [0.25, '¼']];
+
+function ReceiptFlow({ state, actions, meal: initialMeal, date, onClose }) {
+  const [stage, setStage] = useState('pick'); /* pick | reading | review */
+  const [progress, setProgress] = useState(0);
+  const [text, setText] = useState('');
+  const [items, setItems] = useState([]);
+  const [kind, setKind] = useState('grocery');  /* grocery | takeaway */
+  const [meal, setMeal] = useState(initialMeal);
+  const [err, setErr] = useState('');
+  const [editText, setEditText] = useState(false);
+  const fileRef = useRef(null), camRef = useRef(null);
+  const takeaway = kind === 'takeaway';
+
+  /* Shopping: remembered/my-food matches, then Open Food Facts; nothing is
+     ticked, because buying isn't eating.
+     Takeaway & restaurants: remembered matches, then the typical-portion
+     table; everything matched is ticked, because you ordered it to eat. */
+  const build = useCallback((txt, forceKind) => {
+    const k = forceKind || RC.detectKind(txt);
+    setKind(k);
+    const parsed = RC.parseReceiptText(txt, k);
+    setItems(parsed.map((it, i) => {
+      const local = RC.matchLocal(it, state.foods || [], state.aliases || {});
+      const est = k === 'takeaway' && (!local || local.how !== 'remembered') ? DISH.estimate(it.name) : null;
+      const pack = RC.packSize(it.name);
+      const food = local?.how === 'remembered' ? local.food : est?.food || local?.food || null;
+      const how = local?.how === 'remembered' ? 'remembered' : est ? 'estimate' : local?.how || null;
+      const perItem = local?.how === 'remembered' ? local.grams : est ? est.grams : local?.grams || food?.serving?.g || pack?.amount || 100;
+      const grams = k === 'takeaway' ? Math.round(perItem * (it.qty || 1)) : perItem;
+      return { ...it, key: i, include: k === 'takeaway' && !!food, food, how, options: null, searching: false,
+               grams, share: 1, pack, query: k === 'takeaway' ? it.name : RC.expand(it.name) };
+    }));
+    setStage('review');
+  }, [state.foods, state.aliases]);
+
+  /* Look unmatched lines up in Open Food Facts, two at a time, so the
+     review fills in by itself. Free and cached at the edge. Chain items
+     ("McDonald's Big Mac") are often there even when a dish isn't. */
+  useEffect(() => {
+    if (stage !== 'review') return;
+    let cancelled = false;
+    const todo = items.filter(it => !it.food && it.options == null && it.query.length >= 3).map(it => it.key);
+    const worker = async () => {
+      while (todo.length && !cancelled) {
+        const key = todo.shift();
+        const item = items.find(x => x.key === key);
+        setItems(xs => xs.map(x => x.key === key ? { ...x, searching: true } : x));
+        let foods = [];
+        try { foods = (await api('/api/food/search?q=' + encodeURIComponent(item.query))).foods || []; } catch {}
+        if (cancelled) return;
+        /* Store own-brand first: on a Tesco receipt, Tesco's milk is the
+           likeliest match for "TESCO SS MILK". */
+        const raw = (item?.raw || '').toLowerCase();
+        const own = (f) => f.brand && raw.includes(f.brand.toLowerCase().split(/[\s']/)[0]) ? 0 : 1;
+        foods = [...foods].sort((p, q) => own(p) - own(q));
+        /* Restaurant dishes are rarely in a product database, so for takeaways
+           only keep results that actually share a word with the line (no
+           '2 in 1 coffee' for '1/2 Chicken'), with typical portions first. */
+        if (kind === 'takeaway') {
+          const words = new Set(item.query.toLowerCase().split(/[^a-z]+/).filter(w => w.length >= 4));
+          foods = [...DISH.search(item.query, 2), ...foods.filter(f => f.name.toLowerCase().split(/[^a-z]+/).some(w => words.has(w)))];
+        }
+        setItems(xs => xs.map(x => x.key === key ? { ...x, searching: false, options: foods.slice(0, 4) } : x));
+      }
+    };
+    worker(); worker();
+    return () => { cancelled = true; };
+  }, [stage, items.length, kind]);
+
+  const onFile = async (file) => {
+    if (!file) return;
+    setErr(''); setStage('reading'); setProgress(0);
+    try { const t = await ocrImage(file, setProgress); setText(t); build(t); }
+    catch (e) { setErr(e.message || 'Couldn’t read that photo'); setStage('pick'); }
+  };
+  const patch = (key, p) => setItems(xs => xs.map(x => x.key === key ? { ...x, ...p } : x));
+  const eaten = (it) => (it.food ? E.portion(it.food, it.grams * (it.share || 1)) : { kcal: Math.round((Number(it.kcal) || 0) * (it.share || 1)), protein: 0, carbs: 0, fat: 0 });
+  const chosen = items.filter(it => it.include && (it.food || it.kcal));
+  const totalKcal = chosen.reduce((a, it) => a + eaten(it).kcal, 0);
+
+  const commit = (logIt) => {
+    const now = Date.now();
+    const aliases = {};
+    const foods = [];
+    const entries = [];
+    for (const it of items) {
+      const share = it.share || 1;
+      const note = share < 1 ? ` (${SHARES.find(([v]) => v === share)?.[1] || Math.round(share * 100) + '%'})` : '';
+      if (!it.food) {
+        if (logIt && it.include && it.kcal) entries.push({ id: uid(), date, meal, name: (takeaway ? it.name : RC.expand(it.name) || it.name) + note, ...eaten(it), source: 'receipt', created: now, updated: now });
+        continue;
+      }
+      /* A takeaway only remembers what was actually eaten; a shop saves
+         everything matched to My foods, like stocking the cupboard. */
+      if (!takeaway || it.include) foods.push(it.food);
+      const k = RC.aliasKey(it.name);
+      /* Remember the portion per item, not per line: "2x Cheeseburger" is
+         two portions today but one portion is what the line means. */
+      if (k) aliases[k] = { foodId: it.food.id, grams: takeaway ? Math.round(it.grams / (it.qty || 1)) : it.grams };
+      if (logIt && it.include) {
+        const g = Math.round(it.grams * share);
+        entries.push({ id: uid(), date, meal, name: it.food.name + (takeaway && it.qty > 1 ? ` ×${it.qty}` : '') + note, brand: it.food.brand, foodId: it.food.id, grams: g, ...E.portion(it.food, g),
+                       estimate: !!it.food.estimate, source: 'receipt', created: now, updated: now });
+      }
+    }
+    actions.receiptCommit({ foods, entries, aliases });
+    onClose(logIt ? `Logged ${entries.length} item${entries.length === 1 ? '' : 's'}` : `Saved ${foods.length} food${foods.length === 1 ? '' : 's'} to My foods`);
+  };
+
+  if (stage === 'pick') return (
+    <div className="stack gap16">
+      <div className="card pad stack gap8" style={{background:'var(--bg-surface-2)'}}>
+        <h2>Works with</h2>
+        <ul className="sub" style={{marginLeft:18,lineHeight:1.6}}>
+          <li><b style={{color:'var(--text-primary)'}}>Supermarket receipts.</b> Matched to real products.</li>
+          <li><b style={{color:'var(--text-primary)'}}>Deliveroo, Uber Eats and Just Eat.</b> Screenshot the order in the app, or paste the email receipt.</li>
+          <li><b style={{color:'var(--text-primary)'}}>Restaurant bills.</b> Dishes are estimated from typical UK portions, and you can say if you shared.</li>
+        </ul>
+        <p className="sub">It’s read on your phone and nothing is uploaded. Every match you confirm is remembered for next time.</p>
+      </div>
+      <input ref={camRef} type="file" accept="image/*" capture="environment" hidden onChange={e => onFile(e.target.files[0])}/>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => onFile(e.target.files[0])}/>
+      <div className="row gap10">
+        <button className="btn primary grow" onClick={() => camRef.current.click()}>{Ic.camera} Take photo</button>
+        <button className="btn grow" onClick={() => fileRef.current.click()}>{Ic.image} Screenshot</button>
+      </div>
+      <button className="btn block" onClick={() => { setEditText(true); setStage('review'); setItems([]); }}>{Ic.receipt} Paste from an email or app</button>
+      {err && <div className="err">{err}</div>}
+    </div>);
+
+  if (stage === 'reading') return (
+    <div className="stack gap16" style={{alignItems:'center',padding:'30px 0'}}>
+      <div className="spinner" style={{width:34,height:34,borderWidth:3.5}}/>
+      <div style={{fontWeight:700}}>Reading your receipt…</div>
+      <div className="bar" style={{width:'70%'}}><i style={{width: Math.round(progress * 100) + '%', background:'var(--accent)'}}/></div>
+      <div className="sub">The first scan downloads the reader (about 7 MB). After that it’s quicker and works offline.</div>
+    </div>);
+
+  return (
+    <div className="stack gap16">
+      {(editText || !items.length) && <div className="stack gap8">
+        <Field label="Receipt text" hint="Paste an order email, or fix misread lines. Put one item per line with its price at the end, e.g. “1x Chicken Katsu Curry £11.95”.">
+          <textarea className="input num" rows={8} value={text} onChange={e => setText(e.target.value)} placeholder={'1x Big Mac Meal £7.49\n2 Margherita 21.00\nTESCO SS MILK 2L 1.45'}/>
+        </Field>
+        <button className="btn sm" disabled={!text.trim()} onClick={() => { build(text); setEditText(false); }}>Find items</button>
+      </div>}
+      {!!items.length && <>
+        <Seg value={kind} onChange={(k) => build(text, k)} options={[['grocery','Shopping'],['takeaway','Takeaway / restaurant']]}/>
+        <div className="row between"><div className="sub">{items.length} item{items.length === 1 ? '' : 's'} found. {takeaway ? 'Untick anything you didn’t eat.' : 'Tick what you ate.'}</div>
+          {!editText && <button className="btn ghost sm" onClick={() => setEditText(true)}>Edit text</button>}</div>
+        {takeaway && items.some(i => i.how === 'estimate') && <div className="sub" style={{fontSize:13}}>Dishes marked <b>estimate</b> use typical UK portions. Restaurant portions vary a lot, so adjust if yours looked bigger or smaller.</div>}
+      </>}
+      <div className="stack">
+        {items.map(it => (
+          <div key={it.key} className="stack gap8" style={{padding:'12px 0',borderTop:'.5px solid var(--sep)'}}>
+            <div className="row gap10">
+              <input type="checkbox" className="check" checked={it.include} onChange={e => patch(it.key, { include: e.target.checked })} aria-label={`Ate ${it.name}`}/>
+              <div className="grow">
+                <div className="num" style={{fontSize:12.5,color:'var(--text-muted)'}}>{it.mod ? '+ ' : ''}{it.name}{it.qty > 1 ? ` ×${it.qty}` : ''}</div>
+                {it.food
+                  ? <div style={{fontWeight:600}}>{it.food.name}{it.food.brand && !it.food.estimate ? <span className="muted"> · {it.food.brand}</span> : null}
+                      {it.how === 'remembered' && <span className="chip on" style={{height:20,fontSize:11,padding:'0 7px',marginLeft:6}}>remembered</span>}
+                      {it.how === 'estimate' && <span className="chip" style={{height:20,fontSize:11,padding:'0 7px',marginLeft:6,color:'var(--warning)'}}>estimate</span>}</div>
+                  : it.searching ? <div className="row gap8 sub"><span className="spinner" style={{width:14,height:14}}/>Matching “{it.query}”…</div>
+                  : <div className="sub">{it.options?.length ? 'Pick a match, or search' : 'No match found. Search or enter kcal'}</div>}
+              </div>
+              {it.food && <button className="btn ghost sm" onClick={() => patch(it.key, { food: null, how: null, options: it.options || null })}>Change</button>}
+            </div>
+            {!it.food && <div className="row gap6 wrap" style={{paddingLeft:34}}>
+              {(it.options || []).map(f => <button key={f.id} className="chip" onClick={() => patch(it.key, { food: f, how: null, grams: Math.round((takeaway ? (f.serving?.g || 100) * (it.qty || 1) : it.pack?.amount || f.serving?.g || 100)), include: true })}>{f.name}{f.brand && !f.estimate ? ` · ${f.brand}` : ''} <span className="muted num">{f.serving && takeaway ? `${E.portion(f, f.serving.g).kcal} kcal` : `${f.per100.kcal}/100`}</span></button>)}
+              <div className="row gap6" style={{width:'100%'}}>
+                <input className="input" style={{height:38,fontSize:15}} placeholder="Search for it…" defaultValue={it.query} onKeyDown={async e => {
+                  if (e.key !== 'Enter') return;
+                  const q = e.currentTarget.value; patch(it.key, { searching: true, query: q });
+                  let foods = []; try { foods = (await api('/api/food/search?q=' + encodeURIComponent(q))).foods || []; } catch {}
+                  patch(it.key, { searching: false, options: [...DISH.search(q, 2), ...foods].slice(0, 6) });
+                }}/>
+                <input className="input num" style={{height:38,width:110,fontSize:15}} inputMode="numeric" placeholder="or kcal" value={it.kcal || ''} onChange={e => patch(it.key, { kcal: e.target.value.replace(/\D/g,''), include: !!e.target.value })}/>
+              </div>
+            </div>}
+            {it.food && it.include && <div className="row gap8 wrap" style={{paddingLeft:34}}>
+              {!takeaway && it.food.serving?.g && <button className={'chip' + (it.grams === it.food.serving.g ? ' on' : '')} onClick={() => patch(it.key, { grams: it.food.serving.g })}>1 serving</button>}
+              {!takeaway && it.pack?.amount && <button className={'chip' + (it.grams === it.pack.amount ? ' on' : '')} onClick={() => patch(it.key, { grams: it.pack.amount })}>Whole pack</button>}
+              {takeaway && <div className="seg" style={{flex:'0 1 auto'}} role="group" aria-label="How much you ate">
+                {SHARES.map(([v, l]) => <button key={l} className={it.share === v ? 'on' : ''} style={{height:30,minWidth:42,fontSize:13}} onClick={() => patch(it.key, { share: v })}>{l}</button>)}
+              </div>}
+              <div className="row gap6"><input className="input num" style={{height:32,width:78,fontSize:14}} inputMode="decimal" value={it.grams} onChange={e => patch(it.key, { grams: parseFloat(e.target.value) || 0 })} aria-label="Amount"/><span className="muted">{it.food.unit || 'g'}</span></div>
+              <span className="num" style={{fontWeight:700,marginLeft:'auto'}}>{fmtK(eaten(it).kcal)} kcal</span>
+            </div>}
+            {!it.food && it.include && it.kcal && takeaway && <div className="row gap8" style={{paddingLeft:34}}>
+              <div className="seg" style={{flex:'0 1 auto'}} role="group" aria-label="How much you ate">
+                {SHARES.map(([v, l]) => <button key={l} className={it.share === v ? 'on' : ''} style={{height:30,minWidth:42,fontSize:13}} onClick={() => patch(it.key, { share: v })}>{l}</button>)}
+              </div>
+              <span className="num" style={{fontWeight:700,marginLeft:'auto'}}>{fmtK(eaten(it).kcal)} kcal</span>
+            </div>}
+          </div>))}
+      </div>
+      {!!items.length && <>
+        {takeaway && <button className="btn sm" style={{alignSelf:'flex-start'}} onClick={() => setItems(xs => xs.map(x => ({ ...x, share: 0.5 })))}>Split everything in half</button>}
+        <Field label="Log to"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+        <div className="row gap10">
+          {!takeaway && <button className="btn grow" onClick={() => commit(false)} disabled={!items.some(i => i.food)}>Save to My foods</button>}
+          <button className="btn primary grow" onClick={() => commit(true)} disabled={!chosen.length}>Log {chosen.length || ''} · {fmtK(totalKcal)} kcal</button>
+        </div>
+      </>}
+    </div>);
+}
+
+/* ── add food sheet ── */
+function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab, onClose }) {
+  const [tab, setTab] = useState(initialTab || 'search');
+  const [meal, setMeal] = useState(initialMeal || mealForNow());
+  const [picked, setPicked] = useState(null);       /* food awaiting a portion */
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [lookup, setLookup] = useState(null);       /* { code, busy, notFound, error } */
+  const [quick, setQuick] = useState({ name: '', kcal: '', protein: '', carbs: '', fat: '' });
+
+  const recent = useMemo(() => [...(state.foods || [])].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0)), [state.foods]);
+  const local = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return recent.slice(0, 12);
+    return recent.filter(f => `${f.name} ${f.brand || ''}`.toLowerCase().includes(s)).slice(0, 8);
+  }, [q, recent]);
+
+  const dishHits = useMemo(() => (q.trim().length >= 3 ? DISH.search(q, 4) : []), [q]);
+
+  useEffect(() => {
+    const s = q.trim();
+    if (s.length < 3) { setResults([]); return; }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try { setResults((await api('/api/food/search?q=' + encodeURIComponent(s))).foods || []); }
+      catch { setResults([]); }
+      finally { setLoading(false); }
+    }, 450);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const onCode = async (code) => {
+    const known = (state.foods || []).find(f => f.barcode === code);
+    if (known) { setPicked(known); return; }
+    setLookup({ code, busy: true });
+    try {
+      const { food } = await api('/api/food/barcode?code=' + code);
+      if (food) { setLookup(null); setPicked(food); } else setLookup({ code, notFound: true });
+    } catch (e) { setLookup({ code, error: e.offline ? 'You’re offline. Barcode lookups need a connection.' : e.message }); }
+  };
+
+  const add = (food, grams, m) => {
+    actions.addEntry({ date, meal, name: food.name, brand: food.brand, foodId: food.id, grams, ...m, source: tab === 'barcode' ? 'barcode' : 'search' }, food);
+    onClose(`Added ${food.name}`);
+  };
+
+  const FoodRow = ({ f }) => (
+    <div className="list-row" onClick={() => setPicked(f)}>
+      {f.image ? <img className="thumb" src={f.image} alt="" loading="lazy"/> : <div className="thumb row" style={{justifyContent:'center',color:'var(--text-muted)'}}>{Ic.bolt}</div>}
+      <div className="grow"><div className="name">{f.name}</div><div className="meta">{[f.brand, f.serving ? `${E.portion(f, f.serving.g).kcal} kcal per ${f.serving.label}` : `${f.per100.kcal} kcal per 100${f.unit || 'g'}`].filter(Boolean).join(' · ')}</div></div>
+      <span className="icon-btn" style={{color:'var(--accent)'}}>{Ic.plus}</span>
+    </div>);
+
+  const title = picked ? 'How much?' : `Add to ${MEAL_LABEL[meal]}`;
+  return (
+    <Sheet title={title} onClose={() => onClose()} wide={tab === 'receipt'}>
+      {picked
+        ? <div className="stack gap12">
+            <PortionPicker food={picked} meal={meal} setMeal={setMeal} onAdd={(g, m) => add(picked, g, m)}/>
+            <button className="btn ghost sm" onClick={() => setPicked(null)}>Back</button>
+          </div>
+        : <div className="stack gap16">
+            <Seg value={tab} onChange={(t) => { setTab(t); setLookup(null); }} options={[['search','Search'],['barcode','Barcode'],['receipt','Receipt'],['quick','Quick add']]}/>
+            {tab === 'search' && <>
+              <div style={{position:'relative'}}>
+                <input className="input" autoFocus placeholder="Search foods, brands…" value={q} onChange={e => setQ(e.target.value)} style={{paddingLeft:40}}/>
+                <span style={{position:'absolute',left:12,top:12,width:20,height:20,color:'var(--text-muted)'}}>{Ic.search}</span>
+              </div>
+              {!!local.length && <div><div className="label" style={{marginBottom:4}}>{q ? 'My foods' : 'Recent'}</div><div className="stack">{local.map(f => <FoodRow key={f.id} f={f}/>)}</div></div>}
+              {dishHits.length > 0 && <div><div className="label" style={{marginBottom:4}}>Takeaway & restaurant · estimates</div><div className="stack">{dishHits.map(f => <FoodRow key={f.id} f={f}/>)}</div></div>}
+              {q.trim().length >= 3 && <div>
+                <div className="row gap8" style={{marginBottom:4}}><div className="label">Products · Open Food Facts</div>{loading && <span className="spinner" style={{width:14,height:14}}/>}</div>
+                <div className="stack">{results.map(f => <FoodRow key={f.id} f={f}/>)}</div>
+                {!loading && !results.length && <div className="sub" style={{padding:'10px 0'}}>Nothing found. Try fewer words, or <a href="#" onClick={e => { e.preventDefault(); setTab('quick'); setQuick(o => ({...o, name: q})); }} style={{color:'var(--accent)'}}>quick add it</a>.</div>}
+              </div>}
+              {!q && !local.length && <div className="sub">Search millions of products, or scan a barcode. Foods you log show up here for one-tap re-adding.</div>}
+            </>}
+            {tab === 'barcode' && (lookup?.notFound
+              ? <div className="stack gap12"><div className="card pad" style={{background:'var(--bg-surface-2)'}}><b>Barcode {lookup.code} isn’t in Open Food Facts yet.</b><div className="sub">Add it from the label once and Tally will know it from now on.</div></div>
+                  <CustomFoodForm barcode={lookup.code} onSave={(f) => { actions.saveFood(f); setLookup(null); setPicked(f); }}/></div>
+              : lookup?.busy ? <div className="row gap10" style={{justifyContent:'center',padding:30}}><span className="spinner"/>Looking up {lookup.code}…</div>
+              : <>{lookup?.error && <div className="err">{lookup.error}</div>}<BarcodeScanner key={lookup?.code || 'scan'} onCode={onCode}/></>)}
+            {tab === 'receipt' && <ReceiptFlow state={state} actions={actions} meal={meal} date={date} onClose={onClose}/>}
+            {tab === 'quick' && <div className="stack gap12">
+              <Field label="What was it?"><input className="input" value={quick.name} onChange={e => setQuick({...quick, name: e.target.value})} placeholder="e.g. Pret chicken wrap"/></Field>
+              <Field label="Calories"><input className="input num" inputMode="numeric" value={quick.kcal} onChange={e => setQuick({...quick, kcal: e.target.value})} placeholder="kcal"/></Field>
+              <div className="row gap8">
+                {['protein','carbs','fat'].map(k => <Field key={k} label={k[0].toUpperCase() + k.slice(1) + ' g'}><input className="input num" inputMode="decimal" value={quick[k]} onChange={e => setQuick({...quick, [k]: e.target.value})} placeholder="optional"/></Field>)}
+              </div>
+              <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+              <button className="btn primary" disabled={!(parseFloat(quick.kcal) > 0)} onClick={() => {
+                actions.addEntry({ date, meal, name: quick.name.trim() || 'Quick add', kcal: Math.round(parseFloat(quick.kcal)), protein: r1(parseFloat(quick.protein)), carbs: r1(parseFloat(quick.carbs)), fat: r1(parseFloat(quick.fat)), source: 'quick' });
+                onClose('Added');
+              }}>Add {quick.kcal ? fmtK(parseFloat(quick.kcal)) + ' kcal' : ''}</button>
+              <div className="divider"/>
+              <details><summary className="sub" style={{cursor:'pointer'}}>Create a reusable food from a label</summary><div style={{marginTop:12}}><CustomFoodForm initialName={quick.name} onSave={(f) => { actions.saveFood(f); setPicked(f); }}/></div></details>
+            </div>}
+          </div>}
+    </Sheet>);
+}
+
+function EntrySheet({ entry, state, actions, onClose }) {
+  const food = entry.foodId && (state.foods || []).find(f => f.id === entry.foodId);
+  const [meal, setMeal] = useState(entry.meal);
+  const [vals, setVals] = useState({ kcal: entry.kcal, protein: entry.protein, carbs: entry.carbs, fat: entry.fat, name: entry.name });
+  return (
+    <Sheet title="Edit entry" onClose={() => onClose()} footer={<button className="btn danger" onClick={() => { actions.removeEntry(entry.id); onClose('Deleted', () => actions.restoreEntry(entry)); }}>{Ic.trash} Delete</button>}>
+      {food && entry.grams
+        ? <PortionPicker food={food} initialGrams={entry.grams} meal={meal} setMeal={setMeal} addLabel="Save" onAdd={(g, m) => { actions.updateEntry({ ...entry, meal, grams: g, ...m }); onClose('Saved'); }}/>
+        : <div className="stack gap12">
+            <Field label="Name"><input className="input" value={vals.name} onChange={e => setVals({...vals, name: e.target.value})}/></Field>
+            <div className="row gap8">
+              {['kcal','protein','carbs','fat'].map(k => <Field key={k} label={k === 'kcal' ? 'kcal' : k[0].toUpperCase() + k.slice(1) + ' g'}><input className="input num" inputMode="decimal" value={vals[k] ?? ''} onChange={e => setVals({...vals, [k]: e.target.value})}/></Field>)}
+            </div>
+            <Field label="Meal"><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>
+            <button className="btn primary" onClick={() => { actions.updateEntry({ ...entry, meal, name: vals.name, kcal: Math.round(parseFloat(vals.kcal) || 0), protein: r1(parseFloat(vals.protein)), carbs: r1(parseFloat(vals.carbs)), fat: r1(parseFloat(vals.fat)) }); onClose('Saved'); }}>Save</button>
+          </div>}
+    </Sheet>);
+}
+
+function WeighInSheet({ state, actions, onClose }) {
+  const units = state.profile?.units || 'kg';
+  const [date, setDate] = useState(E.today());
+  const existing = (state.weights || []).find(w => w.date === date);
+  const [kg, setKg] = useState(existing?.kg ?? E.currentWeight(state));
+  return (
+    <Sheet title="Log weight" onClose={() => onClose()}>
+      <div className="stack gap16">
+        <Field label="Weight"><WeightInput kg={kg} units={units} onChange={setKg} autoFocus/></Field>
+        <Field label="Date"><input className="input" type="date" value={date} max={E.today()} onChange={e => setDate(e.target.value)}/></Field>
+        <p className="sub">For the cleanest trend, weigh in first thing in the morning after the toilet, before eating or drinking.</p>
+        <button className="btn primary" disabled={!(kg > 25 && kg < 400)} onClick={() => { actions.logWeight(date, kg); onClose(existing ? 'Weight updated' : 'Weight logged'); }}>{existing ? 'Update' : 'Save'}</button>
+      </div>
+    </Sheet>);
+}
+
+/* ── views ── */
+function TodayView({ state, actions, date, setDate, open }) {
+  const t = E.targets(state, date);
+  const day = E.dayTotals(state.entries, date);
+  const hasWeightToday = (state.weights || []).some(w => w.date === E.today());
+  const top = E.insights(state).find(i => i.level === 'danger' || i.level === 'warn');
+  return (
+    <div className="stack gap16">
+      {/* Large title, iOS style: the day on the left, glass day-stepper on the right. */}
+      <div className="row between" style={{alignItems:'flex-end'}}>
+        <div>
+          <div className="label" style={{textTransform:'none',fontSize:15}}>{E.parseIso(date).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <h1>{prettyDate(date)}</h1>
+        </div>
+        <div className="row gap8">
+          {date !== E.today() && <button className="btn sm" onClick={() => setDate(E.today())}>Today</button>}
+          <button className="icon-btn" aria-label="Previous day" onClick={() => setDate(E.addDays(date, -1))}>{Ic.left}</button>
+          <button className="icon-btn" aria-label="Next day" disabled={date >= E.today()} style={{opacity: date >= E.today() ? .35 : 1}} onClick={() => date < E.today() && setDate(E.addDays(date, 1))}>{Ic.right}</button>
+        </div>
+      </div>
+
+      <div className="card pad stack gap16">
+        <Ring eaten={day.kcal} target={t.kcal}/>
+        <div className="row gap12">
+          <MacroBar label="Protein" value={day.protein} target={t.protein} color="var(--protein)"/>
+          <MacroBar label="Carbs" value={day.carbs} target={t.carbs} color="var(--carbs)"/>
+          <MacroBar label="Fat" value={day.fat} target={t.fat} color="var(--fat)"/>
+        </div>
+      </div>
+
+      <div className="actions">
+        <button className="action" onClick={() => open('add', { tab: 'barcode' })}><span className="ico">{Ic.barcode}</span>Scan</button>
+        <button className="action" onClick={() => open('add', { tab: 'receipt' })}><span className="ico">{Ic.receipt}</span>Receipt</button>
+        <button className="action" onClick={() => open('add', { tab: 'search' })}><span className="ico">{Ic.search}</span>Search</button>
+        <button className="action" onClick={() => open('add', { tab: 'quick' })}><span className="ico">{Ic.bolt}</span>Quick add</button>
+      </div>
+
+      {date === E.today() && !hasWeightToday && <button className="card pad row gap12" style={{cursor:'pointer',textAlign:'left'}} onClick={() => open('weigh')}>
+        <span className="action" style={{padding:0,background:'none'}}><span className="ico">{Ic.scale}</span></span><div className="grow"><div style={{fontWeight:700}}>Weigh in today</div><div className="sub">Daily readings make your trend and pace checks more accurate.</div></div>{Ic.right}
+      </button>}
+
+      {top && <button className="card insight" style={{'--c': LEVEL[top.level].c, textAlign:'left', cursor:'pointer'}} onClick={() => open('view', 'insights')}>
+        <div className="tag">{LEVEL[top.level].icon}{LEVEL[top.level].label}</div>
+        <div style={{fontWeight:700,marginTop:6}}>{top.title}</div>
+        <div className="sub" style={{marginTop:4}}>{top.body}</div>
+      </button>}
+
+      {E.MEALS.map(m => {
+        const meal = day.byMeal[m];
+        return (
+          <div key={m} className="card pad">
+            <div className="row between">
+              <div><h2>{MEAL_LABEL[m]}</h2>{meal.items.length > 0 && <div className="sub num">{fmtK(meal.kcal)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}</div>}</div>
+              <button className="btn sm" onClick={() => open('add', { meal: m })}>{Ic.plus} Add</button>
+            </div>
+            {meal.items.length > 0 && <div className="stack" style={{marginTop:8}}>
+              {meal.items.map(e => (
+                <div key={e.id} className="list-row" onClick={() => open('entry', e)}>
+                  <div className="grow"><div className="name">{e.name}</div><div className="meta">{[e.brand, e.grams ? `${Math.round(e.grams)} ${(state.foods||[]).find(f=>f.id===e.foodId)?.unit || 'g'}` : e.qtyLabel, e.estimate ? 'estimate' : null, e.source?.startsWith('import') ? 'imported' : null].filter(Boolean).join(' · ')}</div></div>
+                  <div className="num" style={{fontWeight:700}}>{fmtK(e.kcal)}</div>
+                </div>))}
+            </div>}
+          </div>);
+      })}
+    </div>);
+}
+
+function ProgressView({ state, actions, open }) {
+  const units = state.profile?.units || 'kg';
+  const [range, setRange] = useState(90);
+  const series = E.trendSeries(state.weights);
+  const rate = E.weightRate(state.weights, E.today(), 28);
+  const t = E.targets(state);
+  const cur = series.length ? series[series.length - 1].trend : state.profile?.startKg;
+  const first = E.sortedWeights(state.weights)[0];
+  const lost = first && cur ? first.kg - cur : null;
+  const lossWk = rate ? -rate.kgPerWeek : null;
+  const proj = E.projection(cur, state.profile?.goalKg, lossWk && lossWk > 0.05 ? lossWk : t.plannedPaceKg);
+  const history = [...E.sortedWeights(state.weights)].reverse();
+  const [showAll, setShowAll] = useState(false);
+  return (
+    <div className="stack gap16">
+      <div className="row between"><h1>Progress</h1><button className="btn primary sm" onClick={() => open('weigh')}>{Ic.scale} Log weight</button></div>
+      <div className="tiles">
+        <div className="tile"><div className="label">Trend weight</div><div className="v num">{E.fmtWeight(cur, units)}</div><div className="d">Smoothed daily</div></div>
+        <div className="tile"><div className="label">Weekly pace</div><div className="v num">{lossWk == null ? '—' : E.fmtWeight(-lossWk, units, { signed: true })}</div><div className="d">{rate ? `${cur ? Math.abs(lossWk / cur * 100).toFixed(1) : '—'}% per week` : 'Needs ~2 weeks'}</div></div>
+        <div className="tile"><div className="label">Lost so far</div><div className="v num">{lost == null ? '—' : E.fmtWeight(lost, units)}</div><div className="d">{first ? `Since ${shortDate(first.date)}` : '—'}</div></div>
+        <div className="tile"><div className="label">Goal</div><div className="v num">{proj ? E.parseIso(proj.date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : t.atGoal ? 'Reached' : '—'}</div><div className="d">{E.fmtWeight(state.profile?.goalKg, units)}{proj ? ` · ${Math.round(proj.weeks)} wks` : ''}</div></div>
+      </div>
+      <div className="card pad stack gap12">
+        <div className="row between wrap gap8"><h2>Weight timeline</h2>
+          <div className="row gap6">{[[30,'1M'],[90,'3M'],[180,'6M'],[365,'1Y'],[0,'All']].map(([d, l]) => <button key={l} className={'chip' + (range === d ? ' on' : '')} onClick={() => setRange(d)}>{l}</button>)}</div>
+        </div>
+        <WeightChart weights={state.weights} units={units} goalKg={state.profile?.goalKg} rangeDays={range} rate={rate}/>
+      </div>
+      <div className="card pad stack gap12">
+        <div className="row between"><h2>Calories, last 14 days</h2><span className="sub num">Target {fmtK(t.kcal)}</span></div>
+        <CalorieChart entries={state.entries} target={t.kcal}/>
+      </div>
+      <div className="card pad">
+        <h2 style={{marginBottom:6}}>Weigh-ins</h2>
+        {!history.length && <div className="sub">No weigh-ins yet.</div>}
+        {(showAll ? history : history.slice(0, 10)).map(w => (
+          <div key={w.id} className="list-row" style={{cursor:'default'}}>
+            <div className="grow"><div className="name">{prettyDate(w.date, { long: true })}</div>{w.source?.startsWith('import') && <div className="meta">imported</div>}</div>
+            <div className="num" style={{fontWeight:700}}>{E.fmtWeight(w.kg, units)}</div>
+            <button className="icon-btn" aria-label={`Delete weigh-in on ${w.date}`} onClick={() => actions.removeWeight(w)}>{Ic.trash}</button>
+          </div>))}
+        {history.length > 10 && <button className="btn ghost sm" onClick={() => setShowAll(!showAll)}>{showAll ? 'Show fewer' : `Show all ${history.length}`}</button>}
+      </div>
+    </div>);
+}
+
+function InsightsView({ state, actions }) {
+  const list = E.insights(state);
+  const t = E.targets(state);
+  const units = state.profile?.units || 'kg';
+  const kg = t.kg;
+  const bmi = E.bmiOf(kg, state.profile?.heightCm);
+  return (
+    <div className="stack gap16">
+      <h1>Insights</h1>
+      <p className="sub">Health checks based on your weight trend and food log, using NHS and NICE guidance. They update as you log.</p>
+      {list.map(i => (
+        <div key={i.id} className="card insight" style={{'--c': LEVEL[i.level].c}}>
+          <div className="tag">{LEVEL[i.level].icon}{LEVEL[i.level].label}</div>
+          <div style={{fontWeight:800,fontSize:16,marginTop:6}}>{i.title}</div>
+          <p className="sub" style={{marginTop:6,lineHeight:1.55,color:'var(--text-primary)'}}>{i.body}</p>
+          {i.facts && <ul>{i.facts.map((f, k) => <li key={k}>{f}</li>)}</ul>}
+          {i.action && (i.action.kind === 'raise-kcal' || i.action.kind === 'lower-kcal') && <button className="btn sm" style={{marginTop:12}} onClick={() => actions.adjustTarget(i.action.kind === 'raise-kcal' ? i.action.kcal : -i.action.kcal)}>
+            {i.action.kind === 'raise-kcal' ? `Raise my target by ${i.action.kcal} kcal` : `Lower my target by ${i.action.kcal} kcal`}</button>}
+        </div>))}
+      <div className="card pad stack gap10">
+        <h2>Your numbers</h2>
+        {[
+          ['Resting burn (BMR)', `${fmtK(E.bmr(state.profile, kg))} kcal`],
+          ['Maintenance (formula)', `${fmtK(t.est.formula)} kcal`],
+          ['Maintenance (from your data)', t.est.observed ? `${fmtK(t.est.observed)} kcal` : `after 2 weeks of logging (${t.est.loggedDays}/14 days)`],
+          ['Maintenance used', `${fmtK(t.tdee)} kcal`],
+          ['Daily target', `${fmtK(t.kcal)} kcal${state.profile?.override?.kcal ? ' (custom)' : ''}`],
+          ['Daily deficit', t.deficit != null ? `${fmtK(t.deficit)} kcal (${Math.round((t.deficitPct || 0) * 100)}%)` : '—'],
+          ['Expected pace', t.plannedPaceKg != null ? `${E.fmtWeight(t.plannedPaceKg, units)} / week` : '—'],
+          ['BMI', bmi ? bmi.toFixed(1) : '—'],
+        ].map(([k, v]) => <div key={k} className="row between" style={{fontSize:14}}><span className="sub">{k}</span><span className="num" style={{fontWeight:600,textAlign:'right'}}>{v}</span></div>)}
+      </div>
+      <p className="muted" style={{fontSize:12,lineHeight:1.5}}>Tally gives general information, not medical advice. If you’re pregnant, breastfeeding, under 18, have diabetes, an eating disorder or another medical condition, talk to your GP before starting a calorie deficit.</p>
+    </div>);
+}
+
+/* ── import ── */
+function ImportSheet({ state, actions, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [sources, setSources] = useState(null);
+  const [include, setInclude] = useState({});
+  const [skipLogged, setSkipLogged] = useState(true);
+  const [err, setErr] = useState('');
+  const units = state.profile?.units || 'kg';
+  const pick = async (files) => {
+    if (!files?.length) return;
+    setErr(''); setBusy(true); setProgress(0);
+    try {
+      const res = await IMP.analyse([...files], { weightUnit: null, onProgress: setProgress });
+      const useful = res.sources.filter(s => s.entries?.length || s.weights?.length || s.kind === 'generic');
+      if (!useful.length) throw new Error('Couldn’t find any food or weight data in that file.');
+      setSources(useful);
+      setInclude(Object.fromEntries(useful.map((s, i) => [i, !!(s.entries?.length || s.weights?.length)])));
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const reparse = (i, opts) => setSources(ss => ss.map((s, j) => j === i ? IMP.reparse(s, { map: s.columns, weightUnit: s.weightUnit, dateOrder: s.dateOrder, ...opts }) : s));
+  const loggedDates = useMemo(() => new Set((state.entries || []).filter(e => !e.source?.startsWith('import')).map(e => e.date)), [state.entries]);
+  const plan = useMemo(() => {
+    if (!sources) return null;
+    let entries = [], weights = [];
+    sources.forEach((s, i) => { if (include[i]) { entries = entries.concat(s.entries || []); weights = weights.concat(s.weights || []); } });
+    const skipped = skipLogged ? entries.filter(e => loggedDates.has(e.date)).length : 0;
+    if (skipLogged) entries = entries.filter(e => !loggedDates.has(e.date));
+    return { entries, weights, skipped };
+  }, [sources, include, skipLogged, loggedDates]);
+  const range = (s) => {
+    const ds = [...(s.entries || []), ...(s.weights || [])].map(x => x.date).sort();
+    return ds.length ? `${shortDate(ds[0])} ${ds[0].slice(0,4)} – ${shortDate(ds[ds.length-1])} ${ds[ds.length-1].slice(0,4)}` : '';
+  };
+  return (
+    <Sheet title="Import from other apps" onClose={() => onClose()} wide
+      footer={sources && <><button className="btn" onClick={() => setSources(null)}>Start over</button>
+        <button className="btn primary grow" disabled={!plan.entries.length && !plan.weights.length} onClick={() => { actions.importData(plan); onClose(`Imported ${plan.entries.length.toLocaleString()} food entries and ${plan.weights.length.toLocaleString()} weigh-ins`); }}>
+          Import {plan.entries.length.toLocaleString()} entries · {plan.weights.length.toLocaleString()} weigh-ins</button></>}>
+      {!sources ? <div className="stack gap16">
+        <div className="stack gap10">
+          {[
+            ['MyFitnessPal', 'Website → Settings → Export Data (Premium), or ask for your data at Settings → Privacy Center. Upload the ZIP you get by email.'],
+            ['Lose It!', 'Website → Settings → Export my data. Upload the ZIP.'],
+            ['Cronometer', 'Settings → Account → Export data. Upload the servings, daily summary and/or biometrics CSVs.'],
+            ['Apple Health', 'Health app → your picture → Export All Health Data. Upload export.zip. Picks up weight and calories from any app that writes to Health.'],
+            ['Anything else', 'Any CSV with a date column plus calories and/or weight, from Fitbit, Samsung Health, Google Fit, Happy Scale, Libra or a spreadsheet. You can fix the columns before importing.'],
+          ].map(([h, d]) => <div key={h}><div style={{fontWeight:700}}>{h}</div><div className="sub">{d}</div></div>)}
+        </div>
+        <label className="btn primary block" style={{cursor:'pointer'}}>{Ic.upload} Choose files
+          <input type="file" multiple accept=".csv,.zip,.xml,text/csv,application/zip" hidden onChange={e => pick(e.target.files)}/></label>
+        {busy && <div className="row gap10"><span className="spinner"/>Reading… {progress ? Math.round(progress * 100) + '%' : ''}</div>}
+        {err && <div className="err">{err}</div>}
+        <p className="muted" style={{fontSize:12}}>Files are read on this device. Re-importing the same export updates instead of duplicating.</p>
+      </div> : <div className="stack gap12">
+        {sources.map((s, i) => (
+          <div key={i} className="card pad stack gap10" style={{background:'var(--bg-surface-2)'}}>
+            <label className="row gap10" style={{cursor:'pointer'}}>
+              <input type="checkbox" className="check" checked={!!include[i]} onChange={e => setInclude({ ...include, [i]: e.target.checked })}/>
+              <div className="grow"><div style={{fontWeight:700}}>{s.label || s.name}</div>
+                <div className="sub">{[s.entries?.length ? `${s.entries.length.toLocaleString()} food entries` : null, s.weights?.length ? `${s.weights.length.toLocaleString()} weigh-ins` : null].filter(Boolean).join(' · ') || 'Nothing recognised yet'}{range(s) ? ` · ${range(s)}` : ''}</div></div>
+            </label>
+            {(s.notes || []).map((n, k) => <div key={k} className="sub">{n}</div>)}
+            {(s.kind === 'mfp-measurement' || (s.kind === 'generic' && s.columns?.weight)) && <Field label="Weights in this file are in">
+              <Seg value={s.weightUnit || 'kg'} onChange={u => reparse(i, { weightUnit: u })} options={[['kg','kg'],['lb','lb'],['st','stone']]}/></Field>}
+            {s.weights?.length > 0 && <div className="sub">Latest: {E.fmtWeight(s.weights.reduce((a, b) => a.date > b.date ? a : b).kg, units)}. Check this looks right.</div>}
+            {s.kind === 'generic' && s.headers && <details><summary className="sub" style={{cursor:'pointer'}}>Columns</summary>
+              <div className="row gap8 wrap" style={{marginTop:10}}>
+                {['date','kcal','protein','carbs','fat','weight','meal','name'].map(k => <label key={k} className="field" style={{minWidth:130,flex:1}}><span>{k === 'kcal' ? 'Calories' : k[0].toUpperCase() + k.slice(1)}</span>
+                  <select className="select" value={s.columns?.[k] || ''} onChange={e => reparse(i, { map: { ...s.columns, [k]: e.target.value || null } })}>
+                    <option value="">—</option>{s.headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>)}
+                <Field label="Dates are"><Seg value={s.dateOrder || 'dmy'} onChange={d => reparse(i, { dateOrder: d })} options={[['dmy','day/month'],['mdy','month/day']]}/></Field>
+              </div></details>}
+          </div>))}
+        <label className="row gap10" style={{cursor:'pointer'}}><input type="checkbox" className="check" checked={skipLogged} onChange={e => setSkipLogged(e.target.checked)}/>
+          <span className="sub">Skip days I’ve already logged in Tally{plan.skipped ? ` (${plan.skipped.toLocaleString()} entries)` : ''}, so nothing is counted twice</span></label>
+      </div>}
+    </Sheet>);
+}
+
+function MeView({ state, actions, account, refreshAccount, theme, setTheme, open, signOut }) {
+  const p = state.profile || {};
+  const units = p.units || 'kg';
+  const [draft, setDraft] = useState(p);
+  useEffect(() => setDraft(state.profile || {}), [state.profile?.updated]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(p);
+  const set = (k, v) => setDraft(o => ({ ...o, [k]: v }));
+  const t = E.targets({ ...state, profile: draft });
+  const [pk, setPk] = useState({ busy: false, msg: '' });
+  const [pw, setPw] = useState(null);
+  const [del, setDel] = useState(null);
+  const fileRef = useRef(null);
+
+  const addPasskey = async () => {
+    setPk({ busy: true, msg: '' });
+    try { await registerPasskey(); setPk({ busy: false, msg: 'Passkey added.' }); refreshAccount(); }
+    catch (e) { setPk({ busy: false, msg: e.name === 'NotAllowedError' ? 'Cancelled.' : e.name === 'InvalidStateError' ? 'This device already has a passkey for Tally.' : e.message }); }
+  };
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(state, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `tally-backup-${E.today()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  const restore = async (file) => {
+    try { const data = JSON.parse(await file.text()); if (!data || !Array.isArray(data.entries)) throw new Error(); actions.restoreBackup(data); }
+    catch { alert('That isn’t a Tally backup file.'); }
+  };
+
+  return (
+    <div className="stack gap16">
+      <h1>Me</h1>
+
+      <div className="card pad stack gap16">
+        <h2>Goal & body</h2>
+        <Field label="Units"><Seg value={draft.units || 'kg'} onChange={v => set('units', v)} options={[['kg','kg'],['st','st & lb'],['lb','lb']]}/></Field>
+        <div className="row gap10">
+          <Field label="Goal weight"><WeightInput kg={draft.goalKg} units={draft.units || 'kg'} onChange={v => set('goalKg', v)}/></Field>
+        </div>
+        <Field label="Pace"><select className="select" value={String(draft.paceKg ?? 0.5)} onChange={e => set('paceKg', Number(e.target.value))}>
+          {E.PACES.map(pc => <option key={pc.id} value={String(pc.kg)}>{pc.label} · {E.fmtWeight(pc.kg, draft.units || 'kg')} a week</option>)}
+          <option value="0">Maintain my weight</option>
+        </select></Field>
+        <Field label="Activity"><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label} — {a.hint}</option>)}</select></Field>
+        <div className="row gap10">
+          <Field label="Height"><HeightInput cm={draft.heightCm} units={draft.units || 'kg'} onChange={v => set('heightCm', v)}/></Field>
+        </div>
+        <div className="row gap10">
+          <Field label="Year of birth"><input className="input num" inputMode="numeric" value={draft.birthYear || ''} onChange={e => set('birthYear', Number(e.target.value.replace(/\D/g,'').slice(0,4)) || '')}/></Field>
+          <Field label="Sex"><select className="select" value={draft.sex || 'female'} onChange={e => set('sex', e.target.value)}><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select></Field>
+        </div>
+        <details>
+          <summary>Custom targets {draft.override && Object.values(draft.override).some(Boolean) ? '(on)' : ''}</summary>
+          <div className="stack gap10" style={{marginTop:12}}>
+            <p className="sub">Leave blank to let Tally work them out. Suggested: {fmtK(E.targets({ ...state, profile: { ...draft, override: {} } }).kcal)} kcal.</p>
+            <div className="row gap8">
+              {['kcal','protein','carbs','fat'].map(k => <Field key={k} label={k === 'kcal' ? 'kcal' : k[0].toUpperCase() + k.slice(1) + ' g'}>
+                <input className="input num" inputMode="numeric" value={draft.override?.[k] || ''} onChange={e => set('override', { ...(draft.override || {}), [k]: Number(e.target.value.replace(/\D/g,'')) || null })}/></Field>)}
+            </div>
+          </div>
+        </details>
+        <div className="row between" style={{fontSize:14}}><span className="sub">Daily target</span><b className="num">{fmtK(t.kcal)} kcal · P {t.protein} · C {t.carbs} · F {t.fat}</b></div>
+        {dirty && <button className="btn primary" onClick={() => actions.saveProfile(draft)}>Save changes</button>}
+      </div>
+
+      <div className="card pad stack gap12">
+        <h2>Import & backup</h2>
+        <button className="btn" onClick={() => open('import')}>{Ic.upload} Import from MyFitnessPal and other apps</button>
+        <div className="row gap10">
+          <button className="btn grow" onClick={exportJson}>{Ic.download} Download backup</button>
+          <button className="btn grow" onClick={() => fileRef.current.click()}>Restore backup</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => e.target.files[0] && restore(e.target.files[0])}/>
+        </div>
+      </div>
+
+      <div className="card pad stack gap12">
+        <h2>Account</h2>
+        <div className="row between"><span className="sub">Signed in as</span><b>{account?.user?.email}</b></div>
+        <div className="divider"/>
+        <div className="row between"><div><div style={{fontWeight:700}}>Passkeys</div><div className="sub">Sign in with Face ID, Touch ID or Windows Hello.</div></div>
+          {passkeysSupported() && <button className="btn sm" onClick={addPasskey} disabled={pk.busy}>{pk.busy ? <span className="spinner"/> : <>{Ic.plus} Add</>}</button>}</div>
+        {pk.msg && <div className="sub">{pk.msg}</div>}
+        {(account?.passkeys || []).map(k => <div key={k.id} className="row gap10">
+          <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
+          <div className="grow"><div style={{fontWeight:600}}>{k.name}</div><div className="meta muted" style={{fontSize:12}}>Added {new Date(k.created_at).toLocaleDateString('en-GB')}{k.last_used ? ` · last used ${new Date(k.last_used).toLocaleDateString('en-GB')}` : ''}</div></div>
+          <button className="icon-btn" aria-label={`Remove passkey ${k.name}`} onClick={async () => { if (confirm('Remove this passkey? You can add it again later.')) { await api('/api/passkey/remove', { method:'POST', body:{ id: k.id } }); refreshAccount(); } }}>{Ic.trash}</button>
+        </div>)}
+        <div className="divider"/>
+        {pw ? <form className="stack gap10" onSubmit={async e => { e.preventDefault(); try { await api('/api/auth/password', { method:'POST', body:{ current: pw.current, next: pw.next } }); setPw({ done: true }); } catch (er) { setPw({ ...pw, err: er.message }); } }}>
+            {pw.done ? <div className="sub">Password changed. Other devices have been signed out.</div> : <>
+              <Field label="Current password"><input className="input" type="password" autoComplete="current-password" value={pw.current || ''} onChange={e => setPw({ ...pw, current: e.target.value })}/></Field>
+              <Field label="New password"><input className="input" type="password" autoComplete="new-password" minLength={8} value={pw.next || ''} onChange={e => setPw({ ...pw, next: e.target.value })}/></Field>
+              {pw.err && <div className="err">{pw.err}</div>}
+              <div className="row gap8"><button type="button" className="btn grow" onClick={() => setPw(null)}>Cancel</button><button className="btn primary grow">Change password</button></div></>}
+          </form>
+          : <button className="btn" onClick={() => setPw({})}>Change password</button>}
+        <button className="btn" onClick={signOut}>{Ic.logout} Sign out</button>
+      </div>
+
+      <div className="card pad stack gap12">
+        <h2>Appearance</h2>
+        <Seg value={theme} onChange={setTheme} options={[['system','Auto'],['dark','Dark'],['light','Light']]}/>
+      </div>
+
+      <div className="card pad stack gap12">
+        <h2 style={{color:'var(--danger)'}}>Delete account</h2>
+        {del ? <form className="stack gap10" onSubmit={async e => { e.preventDefault(); try { await api('/api/auth/delete', { method:'POST', body:{ password: del.password } }); signOut(true); } catch (er) { setDel({ ...del, err: er.message }); } }}>
+            <p className="sub">This permanently deletes your account and everything you’ve logged. It can’t be undone. Download a backup first if you might want it.</p>
+            <Field label="Password"><input className="input" type="password" autoComplete="current-password" value={del.password || ''} onChange={e => setDel({ ...del, password: e.target.value })}/></Field>
+            {del.err && <div className="err">{del.err}</div>}
+            <div className="row gap8"><button type="button" className="btn grow" onClick={() => setDel(null)}>Cancel</button><button className="btn danger grow">Delete forever</button></div>
+          </form>
+          : <button className="btn danger" onClick={() => setDel({})}>Delete my account…</button>}
+      </div>
+    </div>);
+}
+
+/* ── app ── */
+const VIEWS = [['today','Today',Ic.today],['progress','Progress',Ic.progress],['insights','Insights',Ic.insight],['me','Me',Ic.me]];
+
+function App() {
+  const [account, setAccount] = useState(undefined); /* undefined = loading, null = signed out */
+  const [state, setStateRaw] = useState(null);
+  const [sync, setSync] = useState('idle');           /* idle|saving|synced|offline */
+  const [view, setView] = useState(() => new URLSearchParams(location.search).get('view') || 'today');
+  const [date, setDate] = useState(E.today());
+  const [modal, setModal] = useState(null);           /* { kind, arg } */
+  const [toast, setToast] = useState(null);
+  const [recovery, setRecovery] = useState(null);
+  const [theme, setThemeState] = useState(ThemePref.get());
+  const user = account?.user;
+  const stateRef = useRef(null); stateRef.current = state;
+  const saveTimer = useRef(null), etag = useRef(null), dirty = useRef(false);
+
+  const showToast = (msg, undo) => { setToast({ msg, undo, id: Date.now() }); };
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toast.undo ? 5000 : 2600); return () => clearTimeout(t); }, [toast]);
+
+  /* ── session boot ── */
+  const loadAccount = useCallback(async () => {
+    try { const me = await api('/api/auth/me'); setAccount(me.user ? me : null); if (me.user) Cache.setUser(me.user); else Cache.setUser(null); return me; }
+    catch (e) {
+      /* Offline: trust the last signed-in user and run from the cache. */
+      const u = Cache.user(); setAccount(u ? { user: u, offline: true } : null); return null;
+    }
+  }, []);
+  useEffect(() => { loadAccount(); }, []);
+
+  /* ── state load & sync ── */
+  const push = useCallback(async (s, { merged = false } = {}) => {
+    if (!user) return;
+    setSync('saving');
+    try {
+      const r = await api('/api/state' + (merged ? '?return=merged' : ''), { method: 'PUT', body: s });
+      etag.current = r.__etag; dirty.current = false; setSync('synced');
+      return r;
+    } catch (e) {
+      if (e.status === 401) { setAccount(null); return; }
+      setSync('offline');
+    }
+  }, [user?.id]);
+
+  const pull = useCallback(async ({ conditional = false } = {}) => {
+    if (!user) return;
+    try {
+      const r = await api('/api/state', { headers: conditional && etag.current ? { 'If-None-Match': etag.current } : {} });
+      if (r.notModified) { setSync('synced'); return; }
+      etag.current = r.__etag;
+      const { __etag, ...remote } = r;
+      const local = stateRef.current || Cache.read(user.id);
+      const merged = hydrate(E.mergeState(local, remote));
+      setStateRaw(merged); Cache.write(user.id, merged);
+      if (dirty.current || JSON.stringify(merged) !== JSON.stringify(hydrate(remote))) push(merged);
+      else setSync('synced');
+    } catch (e) {
+      if (e.status === 401) { setAccount(null); return; }
+      setSync('offline');
+    }
+  }, [user?.id, push]);
+
+  useEffect(() => {
+    if (!user) { setStateRaw(null); return; }
+    setStateRaw(hydrate(Cache.read(user.id)));
+    pull();
+  }, [user?.id]);
+
+  /* Refresh when the app comes back to the foreground or the network returns. */
+  useEffect(() => {
+    if (!user) return;
+    const onVis = () => document.visibilityState === 'visible' && pull({ conditional: true });
+    const onOnline = () => pull();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('online', onOnline); };
+  }, [user?.id, pull]);
+
+  /* Flush pending changes if the page is closed mid-debounce. */
+  useEffect(() => {
+    const flush = () => {
+      if (!dirty.current || !stateRef.current || !user) return;
+      fetch('/api/state', { method: 'PUT', keepalive: true, credentials: 'same-origin', headers: { 'X-Tally': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(stateRef.current) }).catch(() => {});
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [user?.id]);
+
+  const setState = useCallback((fn) => {
+    setStateRaw(prev => {
+      const next = typeof fn === 'function' ? fn(prev) : fn;
+      if (user) Cache.write(user.id, next);
+      dirty.current = true; setSync('saving');
+      clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => push(stateRef.current), 1200);
+      return next;
+    });
+  }, [user?.id, push]);
+
+  /* ── actions ── */
+  const actions = useMemo(() => {
+    const now = () => Date.now();
+    const upsert = (list, item) => { const i = list.findIndex(x => x.id === item.id); const next = [...list]; if (i >= 0) next[i] = item; else next.push(item); return next; };
+    const rememberFood = (foods, food) => {
+      if (!food) return foods;
+      const prev = foods.find(f => f.id === food.id);
+      return upsert(foods, { ...prev, ...food, lastUsed: now(), uses: (prev?.uses || 0) + 1, created: prev?.created || now(), updated: now() });
+    };
+    return {
+      addEntry(e, food) {
+        setState(s => ({ ...s, entries: [...s.entries, { id: uid(), ...e, created: now(), updated: now() }], foods: rememberFood(s.foods, food) }));
+      },
+      updateEntry(e) { setState(s => ({ ...s, entries: upsert(s.entries, { ...e, updated: now() }) })); },
+      removeEntry(id) { setState(s => ({ ...s, entries: s.entries.filter(x => x.id !== id), entriesDeleted: [...s.entriesDeleted, { id, deletedAt: now() }] })); },
+      restoreEntry(e) { setState(s => ({ ...s, entries: upsert(s.entries, { ...e, updated: now() }), entriesDeleted: s.entriesDeleted.filter(t => t.id !== e.id) })); },
+      saveFood(f) { setState(s => ({ ...s, foods: rememberFood(s.foods, f) })); },
+      receiptCommit({ foods, entries, aliases }) {
+        setState(s => {
+          let fs = s.foods;
+          for (const f of foods) fs = rememberFood(fs, f);
+          return { ...s, foods: fs, entries: [...s.entries, ...entries], aliases: { ...s.aliases, ...aliases } };
+        });
+      },
+      /* One reading per day: the id is the date, so a second weigh-in on the
+         same day replaces the first rather than skewing the trend. */
+      logWeight(date, kg) { setState(s => ({ ...s, weights: upsert(s.weights, { id: 'w:' + date, date, kg: Math.round(kg * 100) / 100, created: now(), updated: now() }), weightsDeleted: s.weightsDeleted.filter(t => t.id !== 'w:' + date) })); },
+      removeWeight(w) {
+        setState(s => ({ ...s, weights: s.weights.filter(x => x.id !== w.id), weightsDeleted: [...s.weightsDeleted, { id: w.id, deletedAt: now() }] }));
+        showToast('Weigh-in deleted', () => setState(s => ({ ...s, weights: upsert(s.weights, { ...w, updated: Date.now() }), weightsDeleted: s.weightsDeleted.filter(t => t.id !== w.id) })));
+      },
+      saveProfile(p) { setState(s => ({ ...s, profile: { ...p, updated: now() } })); showToast('Saved'); },
+      adjustTarget(delta) {
+        setState(s => {
+          const cur = E.targets(s).kcal;
+          const override = { ...(s.profile.override || {}), kcal: Math.round((cur + delta) / 10) * 10 };
+          return { ...s, profile: { ...s.profile, override, updated: now() } };
+        });
+        showToast(`Target ${delta > 0 ? 'raised' : 'lowered'} by ${Math.abs(delta)} kcal`);
+      },
+      finishOnboarding(p) {
+        setState(s => ({ ...s, profile: p, weights: p.startKg ? upsert(s.weights, { id: 'w:' + E.today(), date: E.today(), kg: p.startKg, created: now(), updated: now() }) : s.weights }));
+      },
+      importData({ entries, weights }) {
+        const t = now();
+        setState(s => {
+          const em = new Map(s.entries.map(e => [e.id, e]));
+          for (const e of entries) em.set(e.id, { ...e, created: em.get(e.id)?.created || t, updated: t });
+          const wm = new Map(s.weights.map(w => [w.id, w]));
+          for (const w of weights) if (!wm.has(w.id) || wm.get(w.id).source?.startsWith('import')) wm.set(w.id, { ...w, created: t, updated: t });
+          const ids = new Set([...entries.map(e => e.id), ...weights.map(w => w.id)]);
+          return { ...s, entries: [...em.values()], weights: [...wm.values()],
+                   entriesDeleted: s.entriesDeleted.filter(x => !ids.has(x.id)), weightsDeleted: s.weightsDeleted.filter(x => !ids.has(x.id)) };
+        });
+      },
+      restoreBackup(data) {
+        setState(s => {
+          const t = now();
+          const stamp = (arr) => (arr || []).map(x => ({ ...x, updated: t }));
+          return hydrate({ ...data, entries: stamp(data.entries), weights: stamp(data.weights), foods: stamp(data.foods),
+            profile: data.profile ? { ...data.profile, updated: t } : s.profile });
+        });
+        showToast('Backup restored');
+      },
+    };
+  }, [setState]);
+
+  const open = (kind, arg) => {
+    if (kind === 'view') { setView(arg); return; }
+    setModal({ kind, arg });
+  };
+  const closeModal = (msg, undo) => { setModal(null); if (msg) showToast(msg, undo); };
+  const go = (v) => { setView(v); document.querySelector('.main')?.scrollTo(0, 0); };
+  const setTheme = (v) => { ThemePref.set(v); setThemeState(v); };
+  const signOut = async (skipServer) => {
+    clearTimeout(saveTimer.current);
+    if (!skipServer) {
+      if (dirty.current && stateRef.current) await push(stateRef.current);
+      try { await api('/api/auth/logout', { method: 'POST', body: {} }); } catch {}
+    }
+    Cache.setUser(null); setAccount(null); setView('today');
+  };
+
+  if (account === undefined) return <div className="auth"><span className="spinner" style={{width:28,height:28}}/></div>;
+  if (!account) return <AuthScreen onSignedIn={(u, extra) => { Cache.setUser(u); setAccount({ user: u }); loadAccount(); if (extra?.recoveryCode) setRecovery(extra); }}/>;
+  if (!state) return <div className="auth"><span className="spinner" style={{width:28,height:28}}/></div>;
+
+  const needsSetup = !state.profile?.done;
+  const syncDot = { saving: 'var(--warning)', synced: 'var(--good)', offline: 'var(--danger)' }[sync];
+  return (
+    <div className="shell">
+      <nav className="sidebar" aria-label="Main">
+        <div className="brand"><img src="/tally-icon.svg" alt=""/>Tally</div>
+        {!needsSetup && VIEWS.map(([id, label, icon]) => <button key={id} className={'nav-item' + (view === id ? ' active' : '')} onClick={() => go(id)}>{icon}{label}</button>)}
+        {!needsSetup && <button className="btn primary" style={{marginTop:14}} onClick={() => open('add', {})}>{Ic.plus} Add food</button>}
+        <div className="grow"/>
+        <div className="row gap8 sub" style={{padding:'0 10px',fontSize:12}} title={sync}>
+          {syncDot && <span style={{width:7,height:7,borderRadius:9,background:syncDot}}/>}
+          {sync === 'offline' ? 'Offline · saved on this device' : sync === 'saving' ? 'Saving…' : sync === 'synced' ? 'Synced' : ''}
+        </div>
+      </nav>
+      <main className="main">
+        <div className="page">
+          {needsSetup ? <Onboarding state={state} onDone={actions.finishOnboarding}/>
+            : view === 'progress' ? <ProgressView state={state} actions={actions} open={open}/>
+            : view === 'insights' ? <InsightsView state={state} actions={actions}/>
+            : view === 'me' ? <MeView state={state} actions={actions} account={account} refreshAccount={loadAccount} theme={theme} setTheme={setTheme} open={open} signOut={signOut}/>
+            : <TodayView state={state} actions={actions} date={date} setDate={setDate} open={open}/>}
+        </div>
+      </main>
+      {!needsSetup && <>
+        <nav className="tabbar glass" aria-label="Main">
+          {VIEWS.map(([id, label, icon]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => go(id)}>{icon}{label}</button>)}
+        </nav>
+        <button className="tab-fab glass" aria-label="Add food" onClick={() => open('add', {})}>{Ic.plus}</button>
+      </>}
+
+      {modal?.kind === 'add' && <AddFoodSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} meal={modal.arg?.meal} tab={modal.arg?.tab} onClose={closeModal}/>}
+      {modal?.kind === 'entry' && <EntrySheet entry={modal.arg} state={state} actions={actions} onClose={closeModal}/>}
+      {modal?.kind === 'weigh' && <WeighInSheet state={state} actions={actions} onClose={closeModal}/>}
+      {modal?.kind === 'import' && <ImportSheet state={state} actions={actions} onClose={closeModal}/>}
+      {recovery && <RecoverySheet code={recovery.recoveryCode} isNew={recovery.isNew} onDone={() => { setRecovery(null); loadAccount(); }}/>}
+      {toast && <div className="toast glass" role="status" key={toast.id}>{toast.msg}{toast.undo && <button onClick={() => { toast.undo(); setToast(null); }}>Undo</button>}</div>}
+    </div>);
+}
+
+ReactDOM.createRoot(document.getElementById('app')).render(<App/>);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/sw.js').catch(function(err) { console.warn('SW registration failed:', err); });
+    });
+  }
+</script>
+</body>
+</html>

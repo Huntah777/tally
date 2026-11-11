@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local development (gitignored).
+# Require an invite code to create accounts:
+# SIGNUP_CODE=letmein
+
+# Local-only test account in the dev D1 (.wrangler/state), made during setup:
+#   dev@tally.test / dev-password-123

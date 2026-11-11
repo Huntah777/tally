@@ -1,0 +1,23 @@
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), publickey-credentials-get=(self), publickey-credentials-create=(self)
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://images.openfoodfacts.org https://static.openfoodfacts.org; connect-src 'self' blob: data:; worker-src 'self' blob:; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# The shell must always revalidate so a deploy is visible on the next load.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/manifest.json
+  Cache-Control: no-cache
+/lib/*
+  Cache-Control: no-cache
+
+# The OCR reader is large and versioned with the package; cache it hard.
+/vendor/tesseract/*
+  Cache-Control: public, max-age=2592000
