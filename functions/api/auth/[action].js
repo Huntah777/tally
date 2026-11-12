@@ -35,17 +35,25 @@ async function signup({ request, env }) {
   const pwErr = passwordProblem(body.password);
   if (pwErr) return json({ error: pwErr }, 400);
 
-  /* Invite-only when SIGNUP_CODE is set. Wrong codes count towards the same
-     per-IP throttle as wrong passwords, so the code can't be brute-forced,
-     and both sides are hashed first so the comparison is fixed-length. */
+  /* Invite-only when SIGNUP_CODE is set. Either that shared code or a
+     personal invite link from an existing member (the invites table) lets
+     someone in. Wrong codes count towards the same per-IP throttle as wrong
+     passwords, so codes can't be brute-forced; the shared code is compared
+     hashed, so the comparison is fixed-length. */
   const invite = (env.SIGNUP_CODE || '').trim();
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  let personalInvite = null;
   if (invite) {
     if (await throttled(request, env, null)) return json({ error: 'Too many attempts — wait 15 minutes and try again' }, 429);
-    const norm = (s) => String(s || '').trim().toLowerCase();
     const [given, want] = await Promise.all([sha256(norm(body.invite)), sha256(norm(invite))]);
     if (!bytesEqual(given, want)) {
-      await recordFailure(request, env, null);
-      return json({ error: 'That invite code isn’t right', field: 'invite' }, 403);
+      personalInvite = norm(body.invite)
+        ? await env.DB.prepare('SELECT code FROM invites WHERE code = ? AND revoked_at IS NULL').bind(norm(body.invite)).first()
+        : null;
+      if (!personalInvite) {
+        await recordFailure(request, env, null);
+        return json({ error: 'That invite code isn’t right', field: 'invite' }, 403);
+      }
     }
   }
 
@@ -60,6 +68,10 @@ async function signup({ request, env }) {
     `INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, recovery_hash, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).bind(id, email, pw.pw_hash, pw.pw_salt, pw.pw_iter, await hashRecoveryCode(recoveryCode), Date.now()).run();
+
+  if (personalInvite) {
+    await env.DB.prepare('UPDATE invites SET uses = uses + 1, last_used = ? WHERE code = ?').bind(Date.now(), personalInvite.code).run();
+  }
 
   const cookie = await startSession(request, env, id);
   return json({ user: { id, email }, recoveryCode }, 201, { 'Set-Cookie': cookie });
@@ -163,6 +175,7 @@ async function deleteAccount({ request, env }) {
     env.DB.prepare('DELETE FROM passkeys WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
     env.DB.prepare('DELETE FROM api_tokens WHERE user_id = ?').bind(user.id),
+    env.DB.prepare('DELETE FROM invites WHERE created_by = ?').bind(user.id),
     env.DB.prepare('DELETE FROM users    WHERE id = ?').bind(user.id),
   ]);
   return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(request) });

@@ -183,3 +183,31 @@ test.describe('Apple Health sync', () => {
     expect(JSON.stringify(bs)).not.toContain('12345');
   });
 });
+
+test.describe('personal invite links', () => {
+  const join = (ctx, invite) => ctx.post('/api/auth/signup', { headers: H, data: { email: unique(), password: 'long-enough-pw', invite } });
+
+  test('a member makes a link, a friend joins with it, the count goes up, turning it off stops it', async ({ baseURL }) => {
+    const a = await newUser(baseURL);
+    const made = await (await a.ctx.post('/api/invites', { headers: H, data: {} })).json();
+    expect(made.code).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+    expect(made.url).toContain('/?invite=' + made.code);
+
+    const friend = await pwRequest.newContext({ baseURL });
+    expect((await join(friend, made.code.toUpperCase())).status()).toBe(201);   /* case doesn't matter */
+    const list = await (await a.ctx.get('/api/invites', { headers: H })).json();
+    expect(list.inviteOnly).toBe(true);
+    expect(list.invites[0]).toMatchObject({ code: made.code, uses: 1 });
+
+    await a.ctx.delete('/api/invites?code=' + made.code, { headers: H });
+    expect((await join(await pwRequest.newContext({ baseURL }), made.code)).status()).toBe(403);
+    expect((await (await a.ctx.get('/api/invites', { headers: H })).json()).invites).toHaveLength(0);
+  });
+
+  test('nobody else can turn your link off', async ({ baseURL }) => {
+    const a = await newUser(baseURL), b = await newUser(baseURL);
+    const { code } = await (await a.ctx.post('/api/invites', { headers: H, data: {} })).json();
+    await b.ctx.delete('/api/invites?code=' + code, { headers: H });
+    expect((await join(await pwRequest.newContext({ baseURL }), code)).status()).toBe(201);
+  });
+});

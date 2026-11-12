@@ -342,6 +342,7 @@ const Ic = {
   image:   svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>),
   run:     svg(<><circle cx="14" cy="4.5" r="2"/><path d="M6 21l3.5-6.5L13 17v4M8.5 11l3-3.5 3 3 3 1M11.5 7.5L9 14"/></>),
   bowl:    svg(<><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M8 7c0-1.5 1-2 1-3M12 7c0-1.5 1-2 1-3M16 7c0-1.5 1-2 1-3"/></>),
+  share:   svg(<><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></>),
   heart:   svg(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>),
   logout:  svg(<><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></>),
 };
@@ -821,6 +822,14 @@ function AuthScreen({ onSignedIn }) {
   /* Ask up front when the server is invite-only, rather than letting
      someone fill the form in only to be told afterwards. */
   useEffect(() => { api('/api/health').then(h => h.invite && setNeedInvite(true)).catch(() => {}); }, []);
+  /* Arriving from an invite link (/?invite=…): straight to sign-up with the
+     code filled in, so all they type is an email and a password. */
+  const [invited, setInvited] = useState(false);
+  useEffect(() => {
+    const code = new URLSearchParams(location.search).get('invite');
+    if (!code) return;
+    setInvite(code); setNeedInvite(true); setMode('signup'); setInvited(true);
+  }, []);
 
   const run = async (fn) => {
     setErr(''); setBusy(true);
@@ -842,6 +851,9 @@ function AuthScreen({ onSignedIn }) {
     <div className="auth">
       <div className="card stack gap16">
         <div className="row gap10"><img src="/tally-icon.svg" alt="" width="34" height="34" style={{borderRadius:9}}/><div><h1 style={{fontSize:22}}>Tally</h1><div className="sub">Calorie deficit, made simple</div></div></div>
+        {invited && mode === 'signup' && <div className="card pad" style={{background:'var(--accent-soft)'}}>
+          <div style={{fontWeight:700}}>You’ve been invited 🎉</div>
+          <div className="sub">Your invite code is filled in. Just add your email and a password.</div></div>}
         {mode !== 'recover' && <Seg value={mode} onChange={(m) => { setMode(m); setErr(''); }} options={[['signin','Sign in'],['signup','Create account']]}/>}
         {mode === 'signin' && passkeysSupported() && <>
           <button className="btn block" onClick={passkey} disabled={busy}>{Ic.face} Sign in with passkey</button>
@@ -1542,6 +1554,54 @@ function HealthStep({ n, title, done, children }) {
       <div className="num" style={{width:28,height:28,borderRadius:14,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,
         background: done ? 'var(--accent)' : 'var(--fill)', color: done ? 'var(--accent-ink)' : 'var(--text-primary)'}}>{done ? '✓' : n}</div>
       <div className="stack gap8 grow"><div style={{fontWeight:700,paddingTop:3}}>{title}</div>{children}</div>
+    </div>);
+}
+
+/* Personal invite links: make one, share it, see who joined, turn it off. */
+function InviteCard() {
+  const [data, setData] = useState(null);
+  const [fresh, setFresh] = useState(null);
+  const [copied, setCopied] = useState('');
+  const [err, setErr] = useState('');
+  const load = () => api('/api/invites').then(setData).catch(e => setErr(e.message));
+  useEffect(() => { load(); }, []);
+  const make = async () => {
+    setErr('');
+    try { const r = await api('/api/invites', { method: 'POST', body: {} }); setFresh(r.code); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const copy = (url) => { navigator.clipboard?.writeText(url); setCopied(url); setTimeout(() => setCopied(''), 1500); };
+  const share = async (url) => {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Join me on Tally', text: 'I’m using Tally to track calories and weight. Here’s an invite:', url }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    copy(url);
+  };
+  const off = async (code) => {
+    if (!confirm('Turn off this invite link? Anyone who already joined keeps their account.')) return;
+    await api('/api/invites?code=' + encodeURIComponent(code), { method: 'DELETE' }); load();
+  };
+  const list = data?.invites || [];
+  return (
+    <div className="card pad stack gap12">
+      <div className="row gap10"><span style={{color:'var(--accent)',width:22,height:22}}>{Ic.share}</span><h2>Invite friends</h2></div>
+      <p className="sub">{data && !data.inviteOnly
+        ? 'Anyone can sign up right now, but a link still takes friends straight to the sign-up page.'
+        : 'Tally is invite-only. Send someone a link: it opens sign-up with the code already filled in.'}</p>
+      <button className="btn primary sm" style={{alignSelf:'flex-start'}} onClick={make}>{Ic.plus} Make an invite link</button>
+      {err && <div className="err">{err}</div>}
+      {list.map(i => (
+        <div key={i.code} className="stack gap8" style={{background:'var(--bg-surface-2)',borderRadius:'var(--r-md)',padding:'12px 14px', boxShadow: fresh === i.code ? 'inset 0 0 0 1.5px var(--accent)' : 'none'}}>
+          <div className="num" style={{fontSize:13,wordBreak:'break-all',color:'var(--text-primary)'}}>{i.url}</div>
+          <div className="muted" style={{fontSize:12.5}}>
+            {i.uses ? `${i.uses} joined` : 'Nobody has joined yet'} · made {new Date(i.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{i.last_used ? ` · last joined ${fmtWhen(i.last_used)}` : ''}</div>
+          <div className="row gap8 wrap">
+            <button className="btn sm" onClick={() => share(i.url)}>{Ic.share} Share</button>
+            <button className="btn sm" onClick={() => copy(i.url)}>{copied === i.url ? 'Copied' : 'Copy link'}</button>
+            <button className="btn ghost sm" style={{color:'var(--danger)'}} onClick={() => off(i.code)}>Turn off</button>
+          </div>
+        </div>))}
     </div>);
 }
 
@@ -2294,6 +2354,8 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         {dirty && <button className="btn primary" onClick={() => actions.saveProfile(draft)}>Save changes</button>}
       </div>
 
+      <InviteCard/>
+
       <AppleHealthCard/>
 
       <div className="card pad stack gap12">
@@ -2589,7 +2651,7 @@ function App() {
   };
 
   if (account === undefined) return <div className="auth"><span className="spinner" style={{width:28,height:28}}/></div>;
-  if (!account) return <AuthScreen onSignedIn={(u, extra) => { Cache.setUser(u); setAccount({ user: u }); loadAccount(); if (extra?.recoveryCode) setRecovery(extra); }}/>;
+  if (!account) return <AuthScreen onSignedIn={(u, extra) => { if (location.search.includes('invite=')) history.replaceState(null, '', '/'); Cache.setUser(u); setAccount({ user: u }); loadAccount(); if (extra?.recoveryCode) setRecovery(extra); }}/>;
   if (!state) return <div className="auth"><span className="spinner" style={{width:28,height:28}}/></div>;
 
   const needsSetup = !state.profile?.done;

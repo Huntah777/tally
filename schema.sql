@@ -71,6 +71,20 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens (user_id);
 
+-- Personal invite links. When SIGNUP_CODE makes Tally invite-only, any of
+-- these active codes also lets someone sign up (/?invite=<code>). Each
+-- member can make their own, see how many joined, and revoke them.
+CREATE TABLE IF NOT EXISTS invites (
+  code        TEXT PRIMARY KEY,             -- lower-case, e.g. 'k3vd-82qm-tq7c'
+  created_by  TEXT NOT NULL,
+  label       TEXT,
+  uses        INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  last_used   INTEGER,
+  revoked_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_invites_creator ON invites (created_by);
+
 -- ── app data ─────────────────────────────────────────────────────────
 -- One JSON blob per user, merged server-side on every PUT (see
 -- functions/api/state.js) so two devices logging at once can't clobber each

@@ -198,3 +198,21 @@ test('every page fits an iPhone SE (375pt) with nothing cut off', async ({ page 
   await page.getByRole('button', { name: 'New' }).click();
   await check('recipe editor');
 });
+
+test('opening an invite link goes straight to sign-up with the code filled in', async ({ page, request }) => {
+  /* someone already in makes a link */
+  const ctx = page.context();
+  await signUp(page);
+  const { url, code } = await page.evaluate(() => fetch('/api/invites', { method: 'POST', headers: { 'X-Tally': '1', 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json()));
+  await ctx.clearCookies();
+  await page.evaluate(() => localStorage.clear());
+  /* a friend opens it */
+  await page.goto(new URL(url).pathname + new URL(url).search);
+  await expect(page.getByText('You’ve been invited')).toBeVisible();
+  await expect(page.getByLabel('Invite code')).toHaveValue(code);
+  await page.getByLabel('Email').fill('friend' + Date.now() + '@tally.test');
+  await page.getByLabel('Password').fill('friend-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.locator('.code')).toBeVisible();
+  expect(new URL(page.url()).search).toBe('');
+});
