@@ -167,3 +167,59 @@ test.describe('exercise & body composition', () => {
     expect(Math.round(without - withEx)).toBe(300);
   });
 });
+
+test.describe('exercise counts towards the deficit', () => {
+  const me = { ...profile, activity: 'sedentary', paceKg: 1, heightCm: 186, birthYear: 1999, goalKg: 100 };
+  const run = (date, kcal) => ({ id: 'r' + date, date, kind: 'workout', kcal, minutes: 40 });
+
+  test('a 400 kcal run: half to eat, half extra deficit, burned goes up by all of it', () => {
+    const base = { profile: me, weights: [{ id: 'w', date: T, kg: 126.4 }], entries: [] };
+    const plain = E.targets(base, T);
+    const t = E.targets({ ...base, exercise: [run(T, 400)] }, T);
+    expect(t.exerciseBonus).toBe(200);
+    expect(t.exerciseDeficit).toBe(200);
+    expect(t.burned).toBe(plain.burned + 400);
+    expect(t.deficitToday).toBe(plain.deficitToday + 200);
+    /* with nothing eaten back, all 400 is deficit */
+    const none = E.targets({ ...base, profile: { ...me, exerciseEatBack: 0 }, exercise: [run(T, 400)] }, T);
+    expect(none.exerciseDeficit).toBe(400);
+    expect(none.kcal).toBe(none.kcalBase);
+  });
+
+  test('regular exercise speeds up the expected pace and goal date', () => {
+    const base = { profile: me, weights: [{ id: 'w', date: T, kg: 126.4 }], entries: [] };
+    const ex = Array.from({ length: 14 }, (_, i) => run(E.addDays(T, -(i + 1)), 500));
+    const t = E.targets({ ...base, exercise: ex }, T);
+    expect(t.exerciseAvgDeficit).toBe(250);
+    expect(t.plannedPaceKg).toBeCloseTo(t.dietPaceKg + (250 * 7) / 7700, 5);
+  });
+
+  test('summary totals for the Exercise page', () => {
+    const s = { profile: me, weights: [{ id: 'w', date: T, kg: 126.4 }], exercise: [run(T, 400), run(E.addDays(T, -2), 300), { id: 'old', date: E.addDays(T, -10), kind: 'workout', kcal: 999 }] };
+    const w = E.exerciseSummary(s, T, 7);
+    expect(w.days).toHaveLength(7);
+    expect(w.burned).toBe(700);
+    expect(w.added).toBe(350);
+    expect(w.extraDeficit).toBe(350);
+    expect(w.workouts).toBe(2);
+    expect(w.minutes).toBe(80);
+  });
+});
+
+test.describe('saved meals & recipes', () => {
+  const bowl = { id: 'b', name: 'Yoghurt bowl', servings: 1, items: [
+    { name: 'Greek yoghurt', per100: { kcal: 57, protein: 10.4, carbs: 3.9, fat: 0 }, grams: 200 },
+    { name: 'Granola', per100: { kcal: 450, protein: 9, carbs: 60, fat: 18 }, grams: 40 },
+    { name: 'Honey', kcal: 64, carbs: 17 },
+  ] };
+  test('totals add up, and editing grams recalculates from per-100 g', () => {
+    expect(E.recipeTotals(bowl).total.kcal).toBe(114 + 180 + 64);
+    const more = { ...bowl, items: bowl.items.map((x, i) => (i === 0 ? { ...x, grams: 300 } : x)) };
+    expect(E.recipeTotals(more).total.kcal).toBe(171 + 180 + 64);
+  });
+  test('batch recipes split into servings', () => {
+    const chilli = { name: 'Chilli', servings: 6, items: [{ name: 'Pot', kcal: 3000, protein: 240, carbs: 240, fat: 120 }] };
+    expect(E.recipePortion(chilli, 1)).toEqual({ kcal: 500, protein: 40, carbs: 40, fat: 20 });
+    expect(E.recipePortion(chilli, 1.5).kcal).toBe(750);
+  });
+});

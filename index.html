@@ -340,6 +340,7 @@ const Ic = {
   camera:  svg(<><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></>),
   image:   svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>),
   run:     svg(<><circle cx="14" cy="4.5" r="2"/><path d="M6 21l3.5-6.5L13 17v4M8.5 11l3-3.5 3 3 3 1M11.5 7.5L9 14"/></>),
+  bowl:    svg(<><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M8 7c0-1.5 1-2 1-3M12 7c0-1.5 1-2 1-3M16 7c0-1.5 1-2 1-3"/></>),
   heart:   svg(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>),
   logout:  svg(<><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l-5-5 5-5M5 12h11"/></>),
 };
@@ -362,6 +363,9 @@ const prettyDate = (iso, { long = false } = {}) => {
   if (iso === E.addDays(t, 1)) return 'Tomorrow';
   return E.parseIso(iso).toLocaleDateString('en-GB', long ? { weekday:'long', day:'numeric', month:'long' } : { weekday:'short', day:'numeric', month:'short' });
 };
+/* "12 Nov 2026, 21:30": for anything where the time matters too. */
+const fmtWhen = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtServ = (n) => (n === 0.5 ? '½' : n === 1.5 ? '1½' : String(Math.round(n * 100) / 100));
 const shortDate = (iso) => E.parseIso(iso).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
 const mealForNow = () => { const h = new Date().getHours(); return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 21 ? 'dinner' : 'snacks'; };
 const loadScript = (() => {
@@ -539,7 +543,7 @@ const Cache = {
   user() { try { return JSON.parse(localStorage.getItem(LAST_USER) || 'null'); } catch { return null; } },
   setUser(u) { try { u ? localStorage.setItem(LAST_USER, JSON.stringify(u)) : localStorage.removeItem(LAST_USER); } catch {} },
 };
-const SEED = () => ({ profile: null, entries: [], entriesDeleted: [], weights: [], weightsDeleted: [], foods: [], foodsDeleted: [], exercise: [], exerciseDeleted: [], aliases: {}, ui: {} });
+const SEED = () => ({ profile: null, entries: [], entriesDeleted: [], weights: [], weightsDeleted: [], foods: [], foodsDeleted: [], exercise: [], exerciseDeleted: [], recipes: [], recipesDeleted: [], aliases: {}, ui: {} });
 const hydrate = (s) => ({ ...SEED(), ...(s || {}) });
 
 const ThemePref = {
@@ -1313,7 +1317,7 @@ function ReceiptFlow({ state, actions, meal: initialMeal, date, onClose }) {
 }
 
 /* ── add food sheet ── */
-function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab, onClose }) {
+function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab, onClose, onNewRecipe }) {
   const [tab, setTab] = useState(initialTab || 'search');
   const [meal, setMeal] = useState(initialMeal || mealForNow());
   const [picked, setPicked] = useState(null);       /* food awaiting a portion */
@@ -1324,6 +1328,11 @@ function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab
   const [quick, setQuick] = useState({ name: '', kcal: '', protein: '', carbs: '', fat: '' });
 
   const recent = useMemo(() => [...(state.foods || [])].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0)), [state.foods]);
+  const [pickedRecipe, setPickedRecipe] = useState(null);
+  const myMeals = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return [...(state.recipes || [])].filter(r => !qq || r.name.toLowerCase().includes(qq)).sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0)).slice(0, qq ? 6 : 8);
+  }, [state.recipes, q]);
   const local = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return recent.slice(0, 12);
@@ -1369,7 +1378,15 @@ function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab
   const title = picked ? 'How much?' : `Add to ${MEAL_LABEL[meal]}`;
   return (
     <Sheet title={title} onClose={() => onClose()} wide={tab === 'receipt'} tall>
-      {picked
+      {pickedRecipe
+        ? <div className="stack gap12">
+            <LogRecipe recipe={pickedRecipe} meal={meal} setMeal={setMeal} onLog={(servings) => {
+              actions.logRecipe(pickedRecipe, { date, meal, servings });
+              onClose(`Added ${pickedRecipe.name}`);
+            }}/>
+            <button className="btn ghost sm" onClick={() => setPickedRecipe(null)}>Back</button>
+          </div>
+      : picked
         ? <div className="stack gap12">
             <PortionPicker food={picked} meal={meal} setMeal={setMeal} onAdd={(g, m) => add(picked, g, m)}/>
             <button className="btn ghost sm" onClick={() => setPicked(null)}>Back</button>
@@ -1380,6 +1397,16 @@ function AddFoodSheet({ state, actions, date, meal: initialMeal, tab: initialTab
               <div style={{position:'relative'}}>
                 <input className="input" autoFocus placeholder="Search foods, brands…" value={q} onChange={e => setQ(e.target.value)} style={{paddingLeft:40}}/>
                 <span style={{position:'absolute',left:12,top:12,width:20,height:20,color:'var(--text-muted)'}}>{Ic.search}</span>
+              </div>
+              <div>
+                <div className="row between" style={{marginBottom:4}}><div className="label">My meals & recipes</div>
+                  <button className="btn ghost sm" style={{height:24,padding:0}} onClick={() => onNewRecipe && onNewRecipe()}>{Ic.plus && <span style={{display:'inline-block',width:14,height:14,verticalAlign:'-2px'}}>{Ic.plus}</span>} New</button></div>
+                {myMeals.length
+                  ? <div className="stack">{myMeals.map(r => <div key={r.id} className="list-row" onClick={() => setPickedRecipe(r)}>
+                      <span className="thumb row" style={{justifyContent:'center',color:'var(--accent)'}}>{Ic.bowl}</span>
+                      <div className="grow"><div className="name">{r.name}</div><div className="meta">{fmtK(E.recipePortion(r, 1).kcal)} kcal per serving · {r.items.length} item{r.items.length === 1 ? '' : 's'}{r.servings > 1 ? ` · makes ${r.servings}` : ''}</div></div>
+                      <span className="icon-btn" style={{color:'var(--accent)'}}>{Ic.plus}</span></div>)}</div>
+                  : !q && <div className="sub" style={{fontSize:14}}>Save meals you eat often (like a yoghurt bowl) to add them in one tap.</div>}
               </div>
               {!!local.length && <div><div className="label" style={{marginBottom:4}}>{q ? 'My foods' : 'Recent'}</div><div className="stack">{local.map(f => <FoodRow key={f.id} f={f}/>)}</div></div>}
               {dishHits.length > 0 && <div><div className="label" style={{marginBottom:4}}>Takeaway & restaurant · estimates</div><div className="stack">{dishHits.map(f => <FoodRow key={f.id} f={f}/>)}</div></div>}
@@ -1418,9 +1445,14 @@ function EntrySheet({ entry, state, actions, onClose }) {
   const food = entry.foodId && (state.foods || []).find(f => f.id === entry.foodId);
   const [meal, setMeal] = useState(entry.meal);
   const [vals, setVals] = useState({ kcal: entry.kcal, protein: entry.protein, carbs: entry.carbs, fat: entry.fat, name: entry.name });
+  const recipe = entry.recipeId && (state.recipes || []).find(r => r.id === entry.recipeId);
   return (
     <Sheet title="Edit entry" onClose={() => onClose()} footer={<button className="btn danger" onClick={() => { actions.removeEntry(entry.id); onClose('Deleted', () => actions.restoreEntry(entry)); }}>{Ic.trash} Delete</button>}>
-      {food && entry.grams
+      {entry.recipeId
+        ? <LogRecipe recipe={recipe || { name: entry.name, servings: 1, items: [{ name: entry.name, kcal: entry.kcal / (entry.servings || 1), protein: (entry.protein || 0) / (entry.servings || 1), carbs: (entry.carbs || 0) / (entry.servings || 1), fat: (entry.fat || 0) / (entry.servings || 1) }] }}
+            initialServings={entry.servings || 1} meal={meal} setMeal={setMeal} label="Save"
+            onLog={(servings) => { actions.updateEntry({ ...entry, meal, servings, ...E.recipePortion(recipe || { servings: 1, items: [{ kcal: entry.kcal / (entry.servings || 1), protein: (entry.protein || 0) / (entry.servings || 1), carbs: (entry.carbs || 0) / (entry.servings || 1), fat: (entry.fat || 0) / (entry.servings || 1) }] }, servings) }); onClose('Saved'); }}/>
+      : food && entry.grams
         ? <PortionPicker food={food} initialGrams={entry.grams} meal={meal} setMeal={setMeal} addLabel="Save" onAdd={(g, m) => { actions.updateEntry({ ...entry, meal, grams: g, ...m }); onClose('Saved'); }}/>
         : <div className="stack gap12">
             <Field label="Name"><input className="input" value={vals.name} onChange={e => setVals({...vals, name: e.target.value})}/></Field>
@@ -1463,7 +1495,7 @@ function ExerciseSheet({ state, actions, date, item, onClose }) {
   const value = kcal !== '' ? Math.round(Number(kcal) || 0) : auto;
   const healthDay = (state.exercise || []).some(x => x.kind === 'health' && x.date === date && !x.deleted);
   const save = () => {
-    actions.saveExercise({ ...(item || {}), id: item?.id || uid(), date, kind: 'workout', type, name: E.EXERCISES[type].label,
+    actions.saveExercise({ ...(item || {}), id: item?.id || uid(), date: item?.date || date, kind: 'workout', type, name: E.EXERCISES[type].label,
       minutes: Number(mins) || 0, kcal: value, kcalEdited: kcal !== '' });
     onClose(item ? 'Workout updated' : 'Workout logged');
   };
@@ -1562,11 +1594,269 @@ function AppleHealthCard() {
           {(tokens || []).map(t => <div key={t.id} className="row gap10">
             <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
             <div className="grow"><div style={{fontWeight:600}}>Sync link <span className="num">{t.prefix}…</span></div>
-              <div className="muted" style={{fontSize:12}}>Made {new Date(t.created_at).toLocaleDateString('en-GB')} · {t.last_used ? 'last used ' + new Date(t.last_used).toLocaleDateString('en-GB') : 'not used yet'}</div></div>
+              <div className="muted" style={{fontSize:12}}>Made {fmtWhen(t.created_at)} · {t.last_used ? 'last used ' + fmtWhen(t.last_used) : 'not used yet'}</div></div>
             <button className="icon-btn" aria-label="Remove sync link" onClick={() => revoke(t.id)}>{Ic.trash}</button>
           </div>)}
         </div>
       </details>
+    </div>);
+}
+
+/* ── saved meals & recipes ──────────────────────────────────────────
+   One thing to the user: a named list of items, optionally "makes N
+   servings". A yoghurt bowl makes 1; a pot of chilli makes 6. Logged as a
+   single entry ("Yoghurt bowl · 1 serving") so the day stays tidy and one
+   tap removes it. Items keep their own per-100 g figures, so amounts can be
+   edited later even if the original food has gone from the library. */
+const itemFromEntry = (state) => (e) => {
+  const food = e.foodId && (state.foods || []).find(f => f.id === e.foodId);
+  return {
+    id: uid(), name: e.name, brand: e.brand, foodId: e.foodId || null,
+    ...(food && e.grams ? { grams: Math.round(e.grams), unit: food.unit || 'g', per100: food.per100 } : {}),
+    kcal: e.kcal, protein: e.protein || 0, carbs: e.carbs || 0, fat: e.fat || 0,
+  };
+};
+const itemFromFood = (f, grams) => ({
+  id: uid(), name: f.name, brand: f.brand, foodId: f.id, grams, unit: f.unit || 'g', per100: f.per100, ...E.portion(f, grams),
+});
+
+/* Choose how many servings, which meal, and log. */
+function LogRecipe({ recipe, meal, setMeal, onLog, initialServings = 1, label = 'Add' }) {
+  const [servings, setServings] = useState(String(initialServings));
+  const n = Math.max(0, parseFloat(servings) || 0);
+  const m = E.recipePortion(recipe, n);
+  const tot = E.recipeTotals(recipe);
+  return (
+    <div className="stack gap16">
+      <div className="row gap12">
+        <div className="thumb row" style={{width:52,height:52,justifyContent:'center',color:'var(--accent)'}}>{Ic.bowl}</div>
+        <div className="grow"><div style={{fontWeight:700,fontSize:17}}>{recipe.name}</div>
+          <div className="sub">{tot.perServing.kcal} kcal per serving{tot.servings > 1 ? ` · makes ${tot.servings}` : ''}</div></div>
+      </div>
+      <Field label="Servings" group>
+        <div className="row gap8">{['0.5','1','1.5','2'].map(v => <button key={v} className={'chip' + (servings === v ? ' on' : '')} onClick={() => setServings(v)}>{fmtServ(Number(v))}</button>)}
+          <input className="input num grow" inputMode="decimal" aria-label="Servings" value={servings} onChange={e => setServings(e.target.value.replace(/[^\d.]/g, ''))}/></div>
+      </Field>
+      <div className="card pad row between" style={{background:'var(--bg-surface-2)'}}>
+        <div><div className="num" style={{fontSize:26,fontWeight:700}}>{fmtK(m.kcal)}</div><div className="label">kcal</div></div>
+        <div className="row gap16 num" style={{fontSize:13}}>
+          <span><b style={{color:'var(--protein)'}}>P</b> {m.protein}g</span><span><b style={{color:'var(--carbs)'}}>C</b> {m.carbs}g</span><span><b style={{color:'var(--fat)'}}>F</b> {m.fat}g</span>
+        </div>
+      </div>
+      {recipe.items?.length > 0 && <details><summary>What’s in it ({recipe.items.length})</summary>
+        <div className="stack" style={{marginTop:6}}>{recipe.items.map((it, i) => <div key={it.id || i} className="row between sub" style={{padding:'4px 0'}}>
+          <span>{it.name}{it.grams ? ` · ${it.grams}${it.unit || 'g'}` : ''}</span><span className="num">{fmtK(E.itemMacros(it).kcal)}</span></div>)}</div></details>}
+      {setMeal && <Field label="Meal" group><Seg value={meal} onChange={setMeal} options={E.MEALS.map(k => [k, MEAL_LABEL[k]])}/></Field>}
+      <button className="btn primary block" disabled={!(n > 0)} onClick={() => onLog(n)}>{label} · {fmtK(m.kcal)} kcal</button>
+    </div>);
+}
+
+/* Create / edit a saved meal or recipe. */
+function RecipeSheet({ state, actions, recipe, initial, onClose }) {
+  const start = recipe || initial || {};
+  const [name, setName] = useState(start.name || '');
+  const [servings, setServings] = useState(String(start.servings || 1));
+  const [usual, setUsual] = useState(start.defaultMeal || '');
+  const [items, setItems] = useState(start.items || []);
+  const [adding, setAdding] = useState(false);
+  const draft = { name, servings: Math.max(1, parseInt(servings, 10) || 1), items };
+  const tot = E.recipeTotals(draft);
+  const setGrams = (id, g) => setItems(xs => xs.map(x => x.id === id ? { ...x, grams: g, ...(x.per100 ? E.portion({ per100: x.per100 }, g) : {}) } : x));
+  const save = () => {
+    actions.saveRecipe({ ...(recipe || {}), id: recipe?.id || uid(), name: name.trim(), servings: draft.servings, defaultMeal: usual || null, items });
+    onClose(recipe ? 'Saved' : `Saved “${name.trim()}”`);
+  };
+  return (
+    <Sheet title={recipe ? 'Edit meal' : 'New meal or recipe'} onClose={() => onClose()} tall
+      footer={<>{recipe && <button className="btn danger" onClick={() => { actions.removeRecipe(recipe); onClose(); }}>{Ic.trash}</button>}
+        <button className="btn primary grow" disabled={!name.trim() || !items.length} onClick={save}>Save · {fmtK(tot.perServing.kcal)} kcal{draft.servings > 1 ? ' per serving' : ''}</button></>}>
+      <div className="stack gap16">
+        <Field label="Name"><input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Yoghurt bowl" autoFocus={!recipe}/></Field>
+        <div className="row gap10">
+          <Field label="Makes" hint="Servings it makes: 1 for a single meal, more for batch cooking.">
+            <div className="row gap8"><input className="input num" inputMode="numeric" value={servings} onChange={e => setServings(e.target.value.replace(/\D/g, ''))}/><span className="muted">serving{draft.servings === 1 ? '' : 's'}</span></div></Field>
+        </div>
+        <Field label="Usually for" hint="Shows it as a one-tap button on that meal in Today." group>
+          <Seg value={usual} onChange={setUsual} options={[['', 'Any'], ...E.MEALS.map(k => [k, MEAL_LABEL[k]])]}/></Field>
+
+        <div className="stack">
+          <div className="row between"><div className="label">Ingredients</div><span className="sub num">{fmtK(tot.total.kcal)} kcal total</span></div>
+          {items.map(it => <div key={it.id} className="list-row" style={{cursor:'default'}}>
+            <div className="grow"><div className="name" style={{fontSize:16}}>{it.name}</div>
+              <div className="meta num">{fmtK(E.itemMacros(it).kcal)} kcal · P {r1(E.itemMacros(it).protein)} · C {r1(E.itemMacros(it).carbs)} · F {r1(E.itemMacros(it).fat)}</div></div>
+            {it.per100 && <div className="row gap6"><input className="input num" style={{width:72,height:36,fontSize:15}} inputMode="decimal" aria-label={`Amount of ${it.name}`} value={it.grams}
+              onChange={e => setGrams(it.id, parseFloat(e.target.value) || 0)}/><span className="muted">{it.unit || 'g'}</span></div>}
+            <button className="icon-btn plain" aria-label={`Remove ${it.name}`} onClick={() => setItems(xs => xs.filter(x => x.id !== it.id))}>{Ic.x}</button>
+          </div>)}
+          {!items.length && <div className="sub" style={{padding:'8px 0'}}>Add what goes in it.</div>}
+        </div>
+        {adding
+          ? <IngredientPicker state={state} onPick={(it) => { setItems(xs => [...xs, it]); setAdding(false); }} onCancel={() => setAdding(false)}/>
+          : <button className="btn" onClick={() => setAdding(true)}>{Ic.plus} Add ingredient</button>}
+      </div>
+    </Sheet>);
+}
+
+/* Search your foods, typical portions and Open Food Facts, then pick an amount. */
+function IngredientPicker({ state, onPick, onCancel }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [food, setFood] = useState(null);
+  const [grams, setGrams] = useState('');
+  const [quick, setQuick] = useState(false);
+  const [qk, setQk] = useState({ name: '', kcal: '', protein: '', carbs: '', fat: '' });
+  const mine = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    const all = [...(state.foods || [])].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+    return (s ? all.filter(f => `${f.name} ${f.brand || ''}`.toLowerCase().includes(s)) : all).slice(0, 6);
+  }, [q, state.foods]);
+  useEffect(() => {
+    const s = q.trim();
+    if (s.length < 3) { setResults([]); return; }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try { setResults([...DISH.search(s, 2), ...((await api('/api/food/search?q=' + encodeURIComponent(s))).foods || [])].slice(0, 10)); }
+      catch { setResults(DISH.search(s, 3)); }
+      finally { setLoading(false); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  if (food) {
+    const g = parseFloat(grams) || 0;
+    const m = E.portion(food, g);
+    return (
+      <div className="card pad stack gap12" style={{background:'var(--bg-surface-2)'}}>
+        <div style={{fontWeight:700}}>{food.name}{food.brand && !food.estimate ? <span className="muted"> · {food.brand}</span> : null}</div>
+        <div className="row gap8">
+          {food.serving?.g && <button className={'chip' + (g === food.serving.g ? ' on' : '')} onClick={() => setGrams(String(food.serving.g))}>1 {food.estimate ? 'portion' : 'serving'}</button>}
+          <input className="input num grow" inputMode="decimal" autoFocus aria-label="Amount" value={grams} onChange={e => setGrams(e.target.value)}/><span className="muted">{food.unit || 'g'}</span>
+        </div>
+        <div className="row between"><span className="num" style={{fontWeight:700}}>{fmtK(m.kcal)} kcal</span>
+          <div className="row gap8"><button className="btn sm" onClick={() => setFood(null)}>Back</button>
+            <button className="btn primary sm" disabled={!g} onClick={() => onPick(itemFromFood(food, g))}>Add</button></div></div>
+      </div>);
+  }
+  if (quick) return (
+    <div className="card pad stack gap10" style={{background:'var(--bg-surface-2)'}}>
+      <Field label="What"><input className="input" value={qk.name} onChange={e => setQk({ ...qk, name: e.target.value })} autoFocus/></Field>
+      <div className="row gap8">{['kcal','protein','carbs','fat'].map(k => <Field key={k} label={k === 'kcal' ? 'kcal' : k[0].toUpperCase() + k.slice(1) + ' g'}>
+        <input className="input num" inputMode="decimal" value={qk[k]} onChange={e => setQk({ ...qk, [k]: e.target.value })}/></Field>)}</div>
+      <div className="row gap8"><button className="btn sm" onClick={() => setQuick(false)}>Back</button>
+        <button className="btn primary sm" disabled={!qk.name.trim() || !(parseFloat(qk.kcal) >= 0)} onClick={() => onPick({ id: uid(), name: qk.name.trim(), kcal: Math.round(parseFloat(qk.kcal) || 0), protein: r1(parseFloat(qk.protein)), carbs: r1(parseFloat(qk.carbs)), fat: r1(parseFloat(qk.fat)) })}>Add</button></div>
+    </div>);
+  const Row = ({ f }) => <div className="list-row" onClick={() => { setFood(f); setGrams(String(f.serving?.g || 100)); }}>
+    <div className="grow"><div className="name" style={{fontSize:16}}>{f.name}</div><div className="meta">{[f.estimate ? 'Typical portion' : f.brand, `${f.per100.kcal} kcal/100${f.unit || 'g'}`].filter(Boolean).join(' · ')}</div></div>
+    <span className="icon-btn" style={{color:'var(--accent)'}}>{Ic.plus}</span></div>;
+  return (
+    <div className="card pad stack gap8" style={{background:'var(--bg-surface-2)'}}>
+      <div className="row gap8"><input className="input grow" autoFocus placeholder="Search foods…" value={q} onChange={e => setQ(e.target.value)}/>
+        <button className="btn sm" onClick={onCancel}>Cancel</button></div>
+      {mine.length > 0 && <><div className="label">My foods</div>{mine.map(f => <Row key={f.id} f={f}/>)}</>}
+      {q.trim().length >= 3 && <><div className="row gap8"><div className="label">Search</div>{loading && <span className="spinner" style={{width:14,height:14}}/>}</div>
+        {results.map(f => <Row key={f.id} f={f}/>)}</>}
+      <button className="btn ghost sm" style={{alignSelf:'flex-start'}} onClick={() => { setQuick(true); setQk({ ...qk, name: q }); }}>Enter calories by hand</button>
+    </div>);
+}
+
+/* Me: the list of saved meals & recipes. */
+function MyMealsCard({ state, open }) {
+  const list = [...(state.recipes || [])].sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <div className="card pad stack gap8">
+      <div className="row between"><h2>Meals & recipes</h2><button className="btn sm" onClick={() => open('recipe', {})}>{Ic.plus} New</button></div>
+      {!list.length && <p className="sub">Save meals you have often, like a yoghurt bowl or your usual lunch, to log them in one tap. You can also build them from today’s log: tap “Save as meal” under any meal.</p>}
+      {list.map(r => <div key={r.id} className="list-row" onClick={() => open('recipe', { recipe: r })}>
+        <span className="thumb row" style={{justifyContent:'center',color:'var(--accent)'}}>{Ic.bowl}</span>
+        <div className="grow"><div className="name">{r.name}</div>
+          <div className="meta">{fmtK(E.recipePortion(r, 1).kcal)} kcal per serving{r.servings > 1 ? ` · makes ${r.servings}` : ''}{r.defaultMeal ? ` · usually ${MEAL_LABEL[r.defaultMeal].toLowerCase()}` : ''}</div></div>
+        <span style={{width:18,height:18,color:'var(--text-muted)'}}>{Ic.right}</span>
+      </div>)}
+    </div>);
+}
+
+/* ── Exercise page ─────────────────────────────────────────────────
+   Everything exercise in one place: totals for the period, how much went
+   back into targets versus into the deficit, a day-by-day chart and the full
+   history (tap a workout to edit it). */
+function ExerciseChart({ days }) {
+  const ref = useRef(null);
+  const W = useWidth(ref), H = 150, P = { l: 36, r: 8, t: 10, b: 22 };
+  const [hover, setHover] = useState(null);
+  const hi = Math.max(200, ...days.map(d => d.credit)) * 1.1;
+  const slot = (W - P.l - P.r) / days.length, bw = Math.max(5, Math.min(24, slot - 5));
+  const y = (v) => P.t + (1 - v / hi) * (H - P.t - P.b);
+  return (
+    <div ref={ref} style={{position:'relative'}}>
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} onPointerLeave={() => setHover(null)} role="img" aria-label={`Exercise calories for the last ${days.length} days`}>
+        {[0, 0.5, 1].map(f => <g key={f}><line x1={P.l} x2={W - P.r} y1={y(hi * f)} y2={y(hi * f)} stroke="var(--border)"/><text x={P.l - 6} y={y(hi * f) + 4} textAnchor="end">{f ? fmtK(hi * f) : 0}</text></g>)}
+        {days.map((d, i) => {
+          const cx = P.l + slot * i + slot / 2;
+          const hTot = Math.max(d.credit ? 3 : 0, H - P.b - y(d.credit));
+          const hAdd = d.credit ? (hTot * d.added) / d.credit : 0;
+          return <g key={d.date} onPointerEnter={() => setHover({ ...d, cx })}>
+            <rect x={cx - slot / 2} y={P.t} width={slot} height={H - P.t - P.b} fill="transparent"/>
+            {d.credit > 0 && <>
+              {/* bottom: eaten back · top: kept as deficit */}
+              <rect x={cx - bw / 2} y={H - P.b - hTot} width={bw} height={Math.max(0, hTot - hAdd - 1)} rx="3" fill="var(--accent)" opacity={hover && hover.date !== d.date ? .45 : .95}/>
+              {hAdd > 0 && <rect x={cx - bw / 2} y={H - P.b - hAdd} width={bw} height={hAdd} rx="3" fill="var(--accent)" opacity={hover && hover.date !== d.date ? .2 : .4}/>}
+            </>}
+            {(i === 0 || i === days.length - 1 || i === Math.floor(days.length / 2)) && <text x={cx} y={H - 6} textAnchor="middle">{i === days.length - 1 ? 'Today' : shortDate(d.date)}</text>}
+          </g>;
+        })}
+      </svg>
+      {hover && <div className="tip" style={{left: Math.min(Math.max(0, (hover.cx / W) * 100 - 10), 64) + '%', top: 0}}>
+        <div style={{fontWeight:700}}>{prettyDate(hover.date)}</div>
+        <div className="muted"><b className="num" style={{color:'var(--text-primary)'}}>{fmtK(hover.credit)}</b> kcal burned</div>
+        {hover.credit > 0 && <div className="muted">+{fmtK(hover.extraDeficit)} deficit · +{fmtK(hover.added)} eaten back</div>}
+      </div>}
+      <div className="row gap16 wrap" style={{fontSize:12,marginTop:6,color:'var(--text-secondary)'}}>
+        <span className="row gap6"><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--accent)"/></svg>Kept as deficit</span>
+        <span className="row gap6"><svg width="10" height="10"><rect width="10" height="10" rx="2" fill="var(--accent)" opacity=".4"/></svg>Added to your target</span>
+      </div>
+    </div>);
+}
+
+function ExerciseView({ state, open, go }) {
+  const [range, setRange] = useState(7);
+  const sum = E.exerciseSummary(state, E.today(), range);
+  const chart = E.exerciseSummary(state, E.today(), Math.max(14, Math.min(range, 30)));
+  const all = E.exerciseSummary(state, E.today(), 90).days.filter(d => d.credit > 0 || d.manual.length || d.health).reverse();
+  const units = state.profile?.units || 'kg';
+  const t = E.targets(state);
+  const eatBack = t.eatBack;
+  return (
+    <div className="stack gap16">
+      <div className="row between" style={{alignItems:'flex-end'}}>
+        <div><button className="btn ghost sm" style={{padding:0,height:24}} onClick={() => go('today')}>‹ Today</button><h1>Exercise</h1></div>
+        <button className="btn primary sm" onClick={() => open('exercise', null)}>{Ic.plus} Log workout</button>
+      </div>
+      <div className="row gap6">{[[7,'7 days'],[30,'30 days'],[90,'90 days']].map(([d, l]) => <button key={d} className={'chip' + (range === d ? ' on' : '')} onClick={() => setRange(d)}>{l}</button>)}</div>
+      <div className="tiles">
+        <div className="tile"><div className="label">Burned</div><div className="v num">{fmtK(sum.burned)}</div><div className="d">kcal from exercise</div></div>
+        <div className="tile"><div className="label">Extra deficit</div><div className="v num" style={{color:'var(--good)'}}>{fmtK(sum.extraDeficit)}</div><div className="d">≈ {E.fmtWeight(sum.extraDeficit / E.KCAL_PER_KG, units, { digits: 2 })} of fat</div></div>
+        <div className="tile"><div className="label">Eaten back</div><div className="v num">{fmtK(sum.added)}</div><div className="d">{eatBack === 0 ? 'off' : eatBack === 1 ? 'all of it' : 'half of it'} (Me → Exercise)</div></div>
+        <div className="tile"><div className="label">Workouts</div><div className="v num">{sum.workouts}</div><div className="d">{sum.minutes ? `${fmtK(sum.minutes)} min` : `${sum.activeDays} active day${sum.activeDays === 1 ? '' : 's'}`}</div></div>
+      </div>
+      <div className="card pad stack gap12">
+        <div className="row between"><h2>By day</h2><span className="sub">last {chart.days.length} days</span></div>
+        <ExerciseChart days={chart.days}/>
+      </div>
+      <div className="card pad">
+        <h2 style={{marginBottom:6}}>History</h2>
+        {!all.length && <div className="sub">Nothing yet. Log a workout, or connect Apple Health in Me.</div>}
+        {all.map(d => <div key={d.date} style={{padding:'10px 0',borderTop:'.5px solid var(--sep)'}}>
+          <div className="row between"><div style={{fontWeight:700}}>{prettyDate(d.date, { long: true })}</div>
+            <div className="num sub">{fmtK(d.credit)} kcal · <span style={{color:'var(--good)'}}>+{fmtK(d.extraDeficit)} deficit</span></div></div>
+          {d.health && <div className="row gap10 sub" style={{marginTop:6}}><span style={{width:18,height:18,color:'var(--danger)'}}>{Ic.heart}</span>
+            <span className="grow">Apple Health · {[d.health.steps ? `${fmtK(d.health.steps)} steps` : null, d.health.activeKcal ? `${fmtK(d.health.activeKcal)} active kcal` : null].filter(Boolean).join(' · ')}</span></div>}
+          {d.manual.map(x => <div key={x.id} className="list-row" onClick={() => open('exercise', x)}>
+            <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.run}</span>
+            <div className="grow"><div className="name" style={{fontSize:16}}>{x.name}</div><div className="meta">{x.minutes} min{d.source !== 'manual' ? ' · counted by Apple Health' : ''}</div></div>
+            <div className="num" style={{fontWeight:700}}>{fmtK(x.kcal)}</div></div>)}
+        </div>)}
+      </div>
     </div>);
 }
 
@@ -1598,6 +1888,19 @@ function TodayView({ state, actions, date, setDate, open }) {
           <MacroBar label="Carbs" value={day.carbs} target={t.carbs} color="var(--carbs)"/>
           <MacroBar label="Fat" value={day.fat} target={t.fat} color="var(--fat)"/>
         </div>
+        {t.burned != null && <>
+          <div className="divider"/>
+          {/* What the day actually costs: everything burned (maintenance plus
+              exercise) minus everything eaten. Exercise you don't eat back
+              shows up here as extra deficit. */}
+          <div className="row between" style={{alignItems:'flex-start'}}>
+            <div><div className="label">Burned today</div><div className="num ring-stat">{fmtK(t.burned)}</div>
+              <div className="sub" style={{fontSize:12.5}}>{t.exercise.credit > 0 ? `incl. ${fmtK(t.exercise.credit)} from exercise` : 'your maintenance'}</div></div>
+            <div style={{textAlign:'right'}}><div className="label">Deficit today</div>
+              <div className="num ring-stat" style={{color: t.burned - day.kcal >= 0 ? 'var(--good)' : 'var(--warning)'}}>{fmtK(t.burned - day.kcal)}</div>
+              <div className="sub" style={{fontSize:12.5}}>{fmtK(t.deficitToday)} if you eat to target</div></div>
+          </div>
+        </>}
       </div>
 
       <div className="actions">
@@ -1625,12 +1928,24 @@ function TodayView({ state, actions, date, setDate, open }) {
               <div><h2>{MEAL_LABEL[m]}</h2>{meal.items.length > 0 && <div className="sub num">{fmtK(meal.kcal)} kcal · P {Math.round(meal.protein)} · C {Math.round(meal.carbs)} · F {Math.round(meal.fat)}</div>}</div>
               <button className="btn sm" onClick={() => open('add', { meal: m })}>{Ic.plus} Add</button>
             </div>
+            {(() => {
+              /* One-tap: saved meals you've marked "usually for" this meal. */
+              const usual = (state.recipes || []).filter(r => r.defaultMeal === m).sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0)).slice(0, 3);
+              return usual.length > 0 && <div className="row gap6 wrap" style={{marginTop:10}}>
+                {usual.map(r => <button key={r.id} className="chip" onClick={() => {
+                  const e = actions.logRecipe(r, { date, meal: m, servings: 1 });
+                  open('toast', { msg: `Added ${r.name}`, undo: () => actions.removeEntry(e.id) });
+                }}>{Ic.plus && <span style={{display:'inline-block',width:14,height:14,verticalAlign:'-2px',marginRight:4}}>{Ic.plus}</span>}{r.name} <span className="muted num">{fmtK(E.recipePortion(r, 1).kcal)}</span></button>)}
+              </div>;
+            })()}
             {meal.items.length > 0 && <div className="stack" style={{marginTop:8}}>
               {meal.items.map(e => (
                 <div key={e.id} className="list-row" onClick={() => open('entry', e)}>
-                  <div className="grow"><div className="name">{e.name}</div><div className="meta">{[e.brand, e.grams ? `${Math.round(e.grams)} ${(state.foods||[]).find(f=>f.id===e.foodId)?.unit || 'g'}` : e.qtyLabel, e.estimate ? 'estimate' : null, e.source?.startsWith('import') ? 'imported' : null].filter(Boolean).join(' · ')}</div></div>
+                  <div className="grow"><div className="name">{e.name}</div><div className="meta">{[e.brand, e.grams ? `${Math.round(e.grams)} ${(state.foods||[]).find(f=>f.id===e.foodId)?.unit || 'g'}` : e.qtyLabel, e.recipeId ? `${fmtServ(e.servings || 1)} serving${(e.servings || 1) === 1 ? '' : 's'}` : null, e.estimate ? 'estimate' : null, e.source?.startsWith('import') ? 'imported' : null].filter(Boolean).join(' · ')}</div></div>
                   <div className="num" style={{fontWeight:700}}>{fmtK(e.kcal)}</div>
                 </div>))}
+              {meal.items.length > 1 && <button className="btn ghost sm" style={{alignSelf:'flex-start',padding:0,marginTop:4}}
+                onClick={() => open('recipe', { initial: { name: '', servings: 1, defaultMeal: m, items: meal.items.map(itemFromEntry(state)) } })}>Save as meal</button>}
             </div>}
           </div>);
       })}
@@ -1643,9 +1958,12 @@ function TodayView({ state, actions, date, setDate, open }) {
             <div className="row between">
               <div><h2>Exercise</h2>
                 <div className="sub num">{ex.credit > 0
-                  ? (t.eatBack > 0 ? `${fmtK(ex.credit)} kcal burned · +${fmtK(t.exerciseBonus)} to eat` : `${fmtK(ex.credit)} kcal burned · not added (Me → Exercise)`)
-                  : 'Workouts add calories to your day'}</div></div>
-              <button className="btn sm" onClick={() => open('exercise', null)}>{Ic.plus} Add</button>
+                  ? `${fmtK(ex.credit)} burned · +${fmtK(t.exerciseBonus)} to eat · +${fmtK(t.exerciseDeficit)} deficit`
+                  : 'Burned calories widen your deficit'}</div></div>
+              <div className="row gap6">
+                <button className="btn ghost sm" onClick={() => open('view', 'exercise')}>See all</button>
+                <button className="btn sm" onClick={() => open('exercise', null)}>{Ic.plus} Add</button>
+              </div>
             </div>
             {(h || ex.manual.length > 0) && <div className="stack" style={{marginTop:8}}>
               {h && <div className="list-row" style={{cursor:'default'}}>
@@ -1697,6 +2015,15 @@ function ProgressView({ state, actions, open }) {
         <div className="row between"><h2>Calories, last 14 days</h2><span className="sub num">Target {fmtK(t.kcal)}</span></div>
         <CalorieChart entries={state.entries} target={t.kcal}/>
       </div>
+      {(() => {
+        const w = E.exerciseSummary(state, E.today(), 7);
+        return <button className="card pad row gap12" style={{textAlign:'left',cursor:'pointer',border:'none',width:'100%',color:'inherit'}} onClick={() => open('view', 'exercise')}>
+          <span className="action" style={{padding:0,background:'none'}}><span className="ico">{Ic.run}</span></span>
+          <div className="grow"><h2>Exercise this week</h2>
+            <div className="sub num">{w.burned > 0 ? `${fmtK(w.burned)} kcal burned · ${fmtK(w.extraDeficit)} extra deficit` : 'Nothing logged yet'}</div></div>
+          <span style={{width:20,height:20,color:'var(--text-muted)'}}>{Ic.right}</span>
+        </button>;
+      })()}
       <div className="card pad">
         <h2 style={{marginBottom:6}}>Weigh-ins</h2>
         {!history.length && <div className="sub">No weigh-ins yet.</div>}
@@ -1739,8 +2066,9 @@ function InsightsView({ state, actions }) {
           ['Maintenance used', `${fmtK(t.tdee)} kcal`],
           ['Daily target', `${fmtK(t.kcalBase)} kcal${state.profile?.override?.kcal ? ' (custom)' : ''}`],
           ['Exercise added today', t.exerciseBonus ? `+${fmtK(t.exerciseBonus)} kcal (${t.eatBack === 1 ? 'all' : 'half'} of ${fmtK(t.exercise.credit)})` : (t.eatBack ? 'none yet' : 'off')],
-          ['Daily deficit', t.deficit != null ? `${fmtK(t.deficit)} kcal (${Math.round((t.deficitPct || 0) * 100)}%)` : '—'],
-          ['Expected pace', t.plannedPaceKg != null ? `${E.fmtWeight(t.plannedPaceKg, units)} / week` : '—'],
+          ['Daily deficit (plan)', t.deficit != null ? `${fmtK(t.deficit)} kcal (${Math.round((t.deficitPct || 0) * 100)}%)` : '—'],
+          ['Extra deficit from exercise', t.exerciseAvgDeficit ? `~${fmtK(t.exerciseAvgDeficit)} kcal/day (last 2 weeks)` : (t.exerciseDeficit ? `${fmtK(t.exerciseDeficit)} kcal today` : 'none yet')],
+          ['Expected pace', t.plannedPaceKg != null ? `${E.fmtWeight(t.plannedPaceKg, units)} / week${t.exerciseAvgDeficit ? ' incl. exercise' : ''}` : '—'],
           ['BMI', bmi ? bmi.toFixed(1) : '—'],
         ].map(([k, v]) => <div key={k} className="row between" style={{fontSize:14}}><span className="sub">{k}</span><span className="num" style={{fontWeight:600,textAlign:'right'}}>{v}</span></div>)}
       </div>
@@ -1925,6 +2253,8 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         {dirty && <button className="btn primary" onClick={() => actions.saveProfile(draft)}>Save changes</button>}
       </div>
 
+      <MyMealsCard state={state} open={open}/>
+
       <div className="card pad stack gap12">
         <h2>Exercise</h2>
         <Field label="Add exercise calories to your daily target" group>
@@ -1955,7 +2285,7 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         {pk.msg && <div className="sub">{pk.msg}</div>}
         {(account?.passkeys || []).map(k => <div key={k.id} className="row gap10">
           <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
-          <div className="grow"><div style={{fontWeight:600}}>{k.name}</div><div className="meta muted" style={{fontSize:12}}>Added {new Date(k.created_at).toLocaleDateString('en-GB')}{k.last_used ? ` · last used ${new Date(k.last_used).toLocaleDateString('en-GB')}` : ''}</div></div>
+          <div className="grow"><div style={{fontWeight:600}}>{k.name}</div><div className="meta muted" style={{fontSize:12}}>Added {fmtWhen(k.created_at)}{k.last_used ? ` · last used ${fmtWhen(k.last_used)}` : ''}</div></div>
           <button className="icon-btn" aria-label={`Remove passkey ${k.name}`} onClick={async () => { if (confirm('Remove this passkey? You can add it again later.')) { await api('/api/passkey/remove', { method:'POST', body:{ id: k.id } }); refreshAccount(); } }}>{Ic.trash}</button>
         </div>)}
         <div className="divider"/>
@@ -2134,6 +2464,19 @@ function App() {
       removeEntry(id) { setState(s => ({ ...s, entries: s.entries.filter(x => x.id !== id), entriesDeleted: [...s.entriesDeleted, { id, deletedAt: now() }] })); },
       restoreEntry(e) { setState(s => ({ ...s, entries: upsert(s.entries, { ...e, updated: now() }), entriesDeleted: s.entriesDeleted.filter(t => t.id !== e.id) })); },
       saveFood(f) { setState(s => ({ ...s, foods: rememberFood(s.foods, f) })); },
+      saveRecipe(r) {
+        setState(s => ({ ...s, recipes: upsert(s.recipes || [], { ...r, created: r.created || now(), updated: now() }), recipesDeleted: (s.recipesDeleted || []).filter(t => t.id !== r.id) }));
+      },
+      removeRecipe(r) {
+        setState(s => ({ ...s, recipes: (s.recipes || []).filter(y => y.id !== r.id), recipesDeleted: [...(s.recipesDeleted || []), { id: r.id, deletedAt: now() }] }));
+        showToast(`Deleted ${r.name}`, () => setState(s => ({ ...s, recipes: upsert(s.recipes || [], { ...r, updated: Date.now() }), recipesDeleted: (s.recipesDeleted || []).filter(t => t.id !== r.id) })));
+      },
+      /* Logs servings of a saved meal/recipe as one entry; returns it (for Undo). */
+      logRecipe(r, { date, meal, servings = 1 }) {
+        const e = { id: uid(), date, meal, name: r.name, recipeId: r.id, servings, ...E.recipePortion(r, servings), source: 'recipe', created: now(), updated: now() };
+        setState(s => ({ ...s, entries: [...s.entries, e], recipes: upsert(s.recipes || [], { ...r, lastUsed: now(), updated: now() }) }));
+        return e;
+      },
       saveExercise(x) {
         setState(s => ({ ...s, exercise: upsert(s.exercise || [], { ...x, created: x.created || now(), updated: now() }), exerciseDeleted: (s.exerciseDeleted || []).filter(t => t.id !== x.id) }));
       },
@@ -2199,7 +2542,8 @@ function App() {
   }, [setState]);
 
   const open = (kind, arg) => {
-    if (kind === 'view') { setView(arg); return; }
+    if (kind === 'view') { go(arg); return; }
+    if (kind === 'toast') { showToast(arg.msg, arg.undo); return; }
     setModal({ kind, arg });
   };
   const closeModal = (msg, undo) => { setModal(null); if (msg) showToast(msg, undo); };
@@ -2236,6 +2580,7 @@ function App() {
         <div className="page">
           {needsSetup ? <Onboarding state={state} onDone={actions.finishOnboarding}/>
             : view === 'progress' ? <ProgressView state={state} actions={actions} open={open}/>
+            : view === 'exercise' ? <ExerciseView state={state} open={open} go={go}/>
             : view === 'insights' ? <InsightsView state={state} actions={actions}/>
             : view === 'me' ? <MeView state={state} actions={actions} account={account} refreshAccount={loadAccount} theme={theme} setTheme={setTheme} open={open} signOut={signOut}/>
             : <TodayView state={state} actions={actions} date={date} setDate={setDate} open={open}/>}
@@ -2248,9 +2593,10 @@ function App() {
         <button className="tab-fab glass" aria-label="Add food" onClick={() => open('add', {})}>{Ic.plus}</button>
       </>}
 
-      {modal?.kind === 'add' && <AddFoodSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} meal={modal.arg?.meal} tab={modal.arg?.tab} onClose={closeModal}/>}
+      {modal?.kind === 'add' && <AddFoodSheet onNewRecipe={() => setModal({ kind: 'recipe', arg: {} })} state={state} actions={actions} date={view === 'today' ? date : E.today()} meal={modal.arg?.meal} tab={modal.arg?.tab} onClose={closeModal}/>}
       {modal?.kind === 'entry' && <EntrySheet entry={modal.arg} state={state} actions={actions} onClose={closeModal}/>}
       {modal?.kind === 'weigh' && <WeighInSheet state={state} actions={actions} onClose={closeModal}/>}
+      {modal?.kind === 'recipe' && <RecipeSheet state={state} actions={actions} recipe={modal.arg?.recipe} initial={modal.arg?.initial} onClose={closeModal}/>}
       {modal?.kind === 'exercise' && <ExerciseSheet state={state} actions={actions} date={view === 'today' ? date : E.today()} item={modal.arg} onClose={closeModal}/>}
       {modal?.kind === 'import' && <ImportSheet state={state} actions={actions} onClose={closeModal}/>}
       {recovery && <RecoverySheet code={recovery.recoveryCode} isNew={recovery.isNew} onDone={() => { setRecovery(null); loadAccount(); }}/>}

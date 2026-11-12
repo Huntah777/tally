@@ -107,3 +107,67 @@ test('log a workout and the target for the day goes up by half of it', async ({ 
   await expect(page.getByText('incl. +200 exercise')).toBeVisible();
   expect(await target()).toBe(before + 200);
 });
+
+async function quickAdd(page, name, kcal) {
+  await page.getByRole('button', { name: 'Quick add' }).first().click();
+  await page.getByPlaceholder('e.g. Pret chicken wrap').fill(name);
+  await page.getByPlaceholder('kcal').fill(String(kcal));
+  await page.getByRole('group', { name: 'Meal' }).getByRole('tab', { name: 'Breakfast' }).click();
+  await page.getByRole('button', { name: new RegExp('^Add ' + kcal) }).click();
+}
+
+test('save breakfast as a meal, then add it again in one tap', async ({ page }) => {
+  await signUp(page);
+  await onboard(page);
+  await quickAdd(page, 'Greek yoghurt', 150);
+  await quickAdd(page, 'Granola', 180);
+  await page.getByRole('button', { name: 'Save as meal' }).click();
+  await page.getByLabel('Name').fill('Yoghurt bowl');
+  await page.getByRole('button', { name: /^Save · 330 kcal/ }).click();
+  /* the one-tap chip on Breakfast */
+  await page.getByRole('button', { name: /Yoghurt bowl 330/ }).click();
+  await expect(page.getByText('Added Yoghurt bowl')).toBeVisible();
+  await expect(page.locator('.list-row', { hasText: 'Yoghurt bowl' })).toContainText('1 serving');
+  /* and in Me */
+  await page.goto('/?view=me');
+  await expect(page.getByRole('heading', { name: 'Meals & recipes' })).toBeVisible();
+  await expect(page.locator('.list-row', { hasText: 'Yoghurt bowl' })).toContainText('330 kcal per serving');
+});
+
+test('a batch recipe logs by the serving from search', async ({ page }) => {
+  await signUp(page);
+  await onboard(page);
+  await page.getByRole('button', { name: 'Search' }).first().click();
+  await page.getByRole('button', { name: 'New' }).click();
+  await page.getByLabel('Name').fill('Chilli');
+  await page.getByLabel('Makes').fill('4');
+  await page.getByRole('button', { name: 'Add ingredient' }).click();
+  await page.getByRole('button', { name: 'Enter calories by hand' }).click();
+  await page.getByLabel('What').fill('Whole pot');
+  await page.getByLabel('kcal', { exact: true }).fill('2000');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: /^Save · 500 kcal per serving/ }).click();
+  await page.getByRole('button', { name: 'Search' }).first().click();
+  await page.locator('.list-row', { hasText: 'Chilli' }).click();
+  await page.getByRole('button', { name: '1½' }).click();
+  await page.getByRole('button', { name: /^Add · 750 kcal/ }).click();
+  await expect(page.locator('.list-row', { hasText: 'Chilli' })).toContainText('1½ servings');
+});
+
+test('exercise page shows totals, and the deficit includes exercise', async ({ page }) => {
+  await signUp(page);
+  await onboard(page);
+  const deficit = async () => Number((await page.locator('.label:text-is("Deficit today") + div').innerText()).replace(/\D/g, ''));
+  const before = await deficit();
+  await page.getByRole('heading', { name: 'Exercise' }).locator('xpath=../..').getByRole('button', { name: 'Add' }).click();
+  await page.getByRole('button', { name: 'Running' }).click();
+  await page.getByLabel('Calories burned').fill('400');
+  await page.getByRole('button', { name: /^Log · 400 kcal/ }).click();
+  /* burned +400, target +200 → deficit (burned − eaten) +400 now, +200 if you eat to target */
+  expect(await deficit()).toBe(before + 400);
+  await page.getByRole('button', { name: 'See all' }).click();
+  await expect(page.getByRole('heading', { name: 'Exercise', exact: true })).toBeVisible();
+  await expect(page.locator('.tile', { hasText: 'Burned' })).toContainText('400');
+  await expect(page.locator('.tile', { hasText: 'Extra deficit' })).toContainText('200');
+  await expect(page.locator('.tile', { hasText: 'Workouts' })).toContainText('1');
+});
