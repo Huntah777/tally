@@ -171,3 +171,30 @@ test('exercise page shows totals, and the deficit includes exercise', async ({ p
   await expect(page.locator('.tile', { hasText: 'Extra deficit' })).toContainText('200');
   await expect(page.locator('.tile', { hasText: 'Workouts' })).toContainText('1');
 });
+
+test('every page fits an iPhone SE (375pt) with nothing cut off', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await signUp(page);
+  await onboard(page);
+  const check = async (label) => {
+    const r = await page.evaluate(() => {
+      const vw = innerWidth;
+      const off = [...document.querySelectorAll('#app *, .scrim *')].filter((el) => { const b = el.getBoundingClientRect(); return b.width && (b.right > vw + 1 || b.left < -1); }).map((el) => el.tagName + '.' + el.className);
+      const clipped = [...document.querySelectorAll('#app button, .scrim button')].filter((b) => b.getBoundingClientRect().width && b.scrollWidth > b.clientWidth + 2).map((b) => b.innerText);
+      return { off: off.slice(0, 3), clipped: clipped.slice(0, 3), sideways: document.documentElement.scrollWidth > vw };
+    });
+    expect(r, label).toEqual({ off: [], clipped: [], sideways: false });
+  };
+  await check('today');
+  for (const v of ['progress', 'exercise', 'insights', 'me']) {
+    await page.goto('/?view=' + v);
+    await page.waitForSelector('.page h1');
+    await page.evaluate(() => document.querySelectorAll('details').forEach((d) => { d.open = true; }));
+    await check(v);
+  }
+  await page.goto('/?view=today');
+  await page.getByRole('button', { name: 'Search' }).first().click();
+  await check('add sheet');
+  await page.getByRole('button', { name: 'New' }).click();
+  await check('recipe editor');
+});

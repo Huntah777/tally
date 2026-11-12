@@ -189,7 +189,8 @@ h2{font-size:20px;font-weight:700;letter-spacing:-.015em}
 .divider{height:.5px;background:var(--sep);margin:2px 0}
 
 /* controls: capsules */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:50px;padding:0 22px;border-radius:var(--r-pill);border:none;background:var(--fill);color:var(--text-primary);font-weight:600;font-size:17px;cursor:pointer;transition:background var(--dur) var(--ease),transform 160ms var(--spring),opacity var(--dur);white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:8px 22px;text-align:center;line-height:1.2;border-radius:var(--r-pill);border:none;background:var(--fill);color:var(--text-primary);font-weight:600;font-size:17px;cursor:pointer;transition:background var(--dur) var(--ease),transform 160ms var(--spring),opacity var(--dur)}
+/* Buttons wrap to a second line rather than clipping on narrow phones. */
 .btn:hover{background:var(--fill-hover)}
 .btn:active{transform:scale(.96)}
 .btn:disabled{opacity:.4;cursor:default;transform:none}
@@ -197,7 +198,7 @@ h2{font-size:20px;font-weight:700;letter-spacing:-.015em}
 .btn.primary:hover{background:var(--accent-strong)}
 .btn.danger{color:var(--danger)}
 .btn.ghost{background:none;color:var(--tint)}
-.btn.sm{height:34px;padding:0 14px;font-size:15px}
+.btn.sm{min-height:34px;padding:5px 14px;font-size:15px}
 .btn.block{width:100%}
 .btn svg{width:20px;height:20px}
 .icon-btn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;border:none;background:var(--fill);color:var(--text-primary);cursor:pointer;flex-shrink:0;transition:transform 160ms var(--spring),background var(--dur)}
@@ -1521,6 +1522,20 @@ function ExerciseSheet({ state, actions, date, item, onClose }) {
    key travels inside the link, the date comes from your time zone, and raw
    sample lists are summed there, so the Shortcut is just "find samples, send
    them". With SHORTCUT_URL set, step 2 is a single "Add Shortcut" tap. */
+/* A blue word you tap in Shortcuts. */
+const Tap = ({ children }) => <b style={{color:'var(--tint)'}}>{children}</b>;
+/* Something to type exactly. */
+const Code = ({ children }) => <span className="num" style={{background:'var(--fill)',borderRadius:6,padding:'1px 6px',color:'var(--text-primary)',fontWeight:600,whiteSpace:'nowrap'}}>{children}</span>;
+function ShortcutAction({ n, name, note, children }) {
+  return (
+    /* Pulled out to the card's full width: on a 375-393pt phone the step's
+       indent would otherwise squeeze these into a narrow column. */
+    <div className="stack gap6" style={{background:'var(--bg-surface-2)',borderRadius:'var(--r-md)',padding:'12px 14px',marginLeft:-40}}>
+      <div style={{fontWeight:700}}><span className="num" style={{color:'var(--accent)',marginRight:6}}>{n}</span>{name} {note && <span className="muted" style={{fontWeight:500,fontSize:14}}>{note}</span>}</div>
+      <ol className="sub" style={{marginLeft:18,display:'flex',flexDirection:'column',gap:6,lineHeight:1.45,fontSize:14.5}}>{children}</ol>
+    </div>);
+}
+
 function HealthStep({ n, title, done, children }) {
   return (
     <div className="row gap12" style={{alignItems:'flex-start'}}>
@@ -1571,13 +1586,28 @@ function AppleHealthCard() {
             <div className="sub">When it asks, paste your link.</div>
           </HealthStep>
         : <HealthStep n={2} title="Make the Shortcut">
-            <div className="sub">In <b>Shortcuts</b>, tap <b>+</b> and add these three actions:</div>
-            <ol className="sub" style={{marginLeft:18,display:'flex',flexDirection:'column',gap:6,lineHeight:1.45}}>
-              <li><b>Find Health Samples</b>: Active Energy, Start Date is Today</li>
-              <li><b>Find Health Samples</b>: Weight, Latest First, Limit 1</li>
-              <li><b>Get Contents of URL</b>: paste your link, Method <b>POST</b>, Request Body <b>JSON</b>, then add <b className="num">activeKcal</b> → the first Health Samples and <b className="num">weight</b> → the second</li>
-            </ol>
-            <div className="sub">Tap ▶︎ once and allow Health access.</div>
+            <div className="sub">Open the <b>Shortcuts</b> app and tap <b>+</b> in the top corner. You’ll add three actions. For each one, tap <b>Search Actions</b> at the bottom, type its name, and tap it.</div>
+            <ShortcutAction n="A" name="Find Health Samples">
+              <li>It shows <b>Type is …</b>. Tap the blue word after <b>is</b> and choose <b>Active Energy</b>.</li>
+              <li>Tap <Tap>Add Filter</Tap>. Tap the new filter’s first blue word, choose <b>Start Date</b>, and set it to <b>is today</b>.</li>
+            </ShortcutAction>
+            <ShortcutAction n="B" name="Find Health Samples" note="again (a second copy)">
+              <li>Tap the blue word after <b>Type is</b> and choose <b>Weight</b>.</li>
+              <li>Underneath, set <b>Sort by</b> to <b>Start Date</b> and <b>Order</b> to <b>Latest First</b>, then turn <b>Limit</b> on and set it to <b>1</b>.</li>
+            </ShortcutAction>
+            <ShortcutAction n="C" name="Get Contents of URL" note="(this sends the numbers to Tally)">
+              <li>Tap the blue word <Tap>URL</Tap>. Press and hold in the box and tap <b>Paste</b> to put in your sync link from step 1.</li>
+              <li>Tap the small arrow <Tap>›</Tap> on the right of the action to show more settings.</li>
+              <li>Next to <b>Method</b>, tap <Tap>GET</Tap> and choose <b>POST</b>.</li>
+              <li>Next to <b>Request Body</b>, choose <b>JSON</b>.</li>
+              <li>Tap <Tap>Add new field</Tap> and choose <b>Text</b>. Two boxes appear:
+                <ul style={{marginLeft:16,marginTop:4}}>
+                  <li>In the left box (it says <i>Key</i>), type <Code>activeKcal</Code></li>
+                  <li>Tap the right box (it says <i>Text</i>). Above the keyboard, tap <b>Select Variable</b>, then tap the <b>first</b> Find Health Samples action (A).</li>
+                </ul></li>
+              <li>Tap <Tap>Add new field</Tap> → <b>Text</b> again. On the left type <Code>weight</Code>. On the right, use <b>Select Variable</b> and tap the <b>second</b> Find Health Samples action (B).</li>
+            </ShortcutAction>
+            <div className="sub">Tap the name at the top and rename it <b>Tally sync</b>. Then tap <b>▶︎</b> (bottom right) to run it once, and tap <b>Allow</b> when it asks about Health. If you see <Code>"ok": true</Code>, it worked.</div>
           </HealthStep>}
 
       <HealthStep n={3} title="Run it every evening" done={!!synced}>
@@ -1594,7 +1624,7 @@ function AppleHealthCard() {
           {(tokens || []).map(t => <div key={t.id} className="row gap10">
             <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
             <div className="grow"><div style={{fontWeight:600}}>Sync link <span className="num">{t.prefix}…</span></div>
-              <div className="muted" style={{fontSize:12}}>Made {fmtWhen(t.created_at)} · {t.last_used ? 'last used ' + fmtWhen(t.last_used) : 'not used yet'}</div></div>
+              <div className="muted" style={{fontSize:12}}>Made {new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} · {t.last_used ? 'last used ' + fmtWhen(t.last_used) : 'not used yet'}</div></div>
             <button className="icon-btn" aria-label="Remove sync link" onClick={() => revoke(t.id)}>{Ic.trash}</button>
           </div>)}
         </div>
@@ -2217,7 +2247,7 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
           {E.PACES.map(pc => <option key={pc.id} value={String(pc.kg)}>{pc.label} · {E.fmtWeight(pc.kg, draft.units || 'kg')} a week</option>)}
           <option value="0">Maintain my weight</option>
         </select></Field>
-        <Field label="Day-to-day activity" hint="Your normal day, not counting workouts. Log those as exercise or sync Apple Health."><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label} — {a.hint}</option>)}</select></Field>
+        <Field label="Day-to-day activity" hint={`${(E.ACTIVITY[draft.activity] || E.ACTIVITY.light).hint}. Your normal day, not counting workouts. Log those as exercise or sync Apple Health.`}><select className="select" value={draft.activity || 'light'} onChange={e => set('activity', e.target.value)}>{Object.entries(E.ACTIVITY).map(([k, a]) => <option key={k} value={k}>{a.label}</option>)}</select></Field>
         <div className="row gap10">
           <Field label="Height" group><HeightInput cm={draft.heightCm} unit={heightUnitFor(draft)} onChange={v => set('heightCm', v)} onUnitChange={u => set('heightUnit', u)}/></Field>
         </div>
@@ -2285,7 +2315,7 @@ function MeView({ state, actions, account, refreshAccount, theme, setTheme, open
         {pk.msg && <div className="sub">{pk.msg}</div>}
         {(account?.passkeys || []).map(k => <div key={k.id} className="row gap10">
           <span style={{width:20,height:20,color:'var(--accent)'}}>{Ic.key}</span>
-          <div className="grow"><div style={{fontWeight:600}}>{k.name}</div><div className="meta muted" style={{fontSize:12}}>Added {fmtWhen(k.created_at)}{k.last_used ? ` · last used ${fmtWhen(k.last_used)}` : ''}</div></div>
+          <div className="grow"><div style={{fontWeight:600}}>{k.name}</div><div className="meta muted" style={{fontSize:12}}>Added {new Date(k.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{k.last_used ? ` · last used ${fmtWhen(k.last_used)}` : ''}</div></div>
           <button className="icon-btn" aria-label={`Remove passkey ${k.name}`} onClick={async () => { if (confirm('Remove this passkey? You can add it again later.')) { await api('/api/passkey/remove', { method:'POST', body:{ id: k.id } }); refreshAccount(); } }}>{Ic.trash}</button>
         </div>)}
         <div className="divider"/>
